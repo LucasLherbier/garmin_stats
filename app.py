@@ -9,15 +9,14 @@ from sql_queries import (
     get_custom_metrics_query,
     get_running_distance_by_timerange_query,
 )
-import tab_swimming
-import tab_biking
-import tab_running
-import tab_race
 import plotly.express as px
-import os 
-import xml.etree.ElementTree as ET
-import folium
-from streamlit_folium import st_folium
+import tabs.tab_swimming as tab_swimming
+import tabs.tab_biking as tab_biking
+import tabs.tab_running as tab_running
+import tabs.tab_race as tab_race
+import os
+import sys
+import actions.utils as utils
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 db_path = os.path.join(script_dir, "activities.db")
@@ -28,36 +27,6 @@ def format_duration(seconds):
     if seconds is None:
         return "N/A"
     return str(timedelta(seconds=seconds)).split(".")[0]
-
-def display_gpx_map(gpx_file_path):
-    # Parse the GPX file
-    namespace = {'default': 'http://www.topografix.com/GPX/1/1', 'ns3': 'http://www.garmin.com/xmlschemas/TrackPointExtension/v1'}
-    tree = ET.parse(gpx_file_path)
-    root = tree.getroot()
-
-    # Extract track points
-    track_points = []
-    for trk in root.findall('default:trk', namespace):
-        for trkseg in trk.findall('default:trkseg', namespace):
-            for trkpt in trkseg.findall('default:trkpt', namespace):
-                lat = float(trkpt.attrib['lat'])
-                lon = float(trkpt.attrib['lon'])
-                track_points.append((lat, lon))
-
-    # Create a Streamlit app
-    st.title("GPX Track Viewer")
-
-    # Create a map centered around the first track point
-    if track_points:
-        m = folium.Map(location=track_points[0], zoom_start=15)
-
-        # Add track points to the map
-        folium.PolyLine(track_points, color="blue", weight=2.5, opacity=1).add_to(m)
-
-        # Display the map in the Streamlit app
-        st_folium(m, width=700, height=500)
-    else:
-        st.write("No track points found.")
 
 # --- Main App ---
 def main():
@@ -85,13 +54,11 @@ def main():
 
     # Sidebar tabs
     st.sidebar.header("Tabs")
-    tab = st.sidebar.radio("Select Tab", ["Overview", "Swimming", "Biking", "Running", "Race"])
+    tab = st.sidebar.radio("Select Tab", ["Running","Overview", "Swimming", "Biking", "Race"])
 
     if tab == "Overview":
         # --- Section 1: Top Metrics ---
         st.header("Top Metrics")
-
-        display_gpx_map('activity_20553665052.gpx')
 
         col1, col2 = st.columns(2)
         top_metrics = pd.read_sql(

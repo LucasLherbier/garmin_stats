@@ -25,8 +25,11 @@ file_formatter = WeekProcessingFormatter('%(asctime)s - %(name)s - %(levelname)s
 console_formatter = logging.Formatter('%(message)s')
 
 # Setup log file
+data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
+if not os.path.isdir(data_dir):
+    os.makedirs(data_dir)
+    
 log_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data/garmin_extraction.log')
-
 # Delete existing log file if it exists
 if os.path.exists(log_file):
     try:
@@ -61,7 +64,7 @@ console_handler.addFilter(SuccessFilter())
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
-def extract_weekly_activities(client, last_week_date, running_date):
+def extract_weekly_activities(client, last_week_date, execution_date):
     # Get the directory where the script is located
     script_dir = os.path.dirname(os.path.abspath(__file__))
     
@@ -75,14 +78,14 @@ def extract_weekly_activities(client, last_week_date, running_date):
     # Check if raw data already exists for this week
     weekly_file = os.path.join(output_dir, f"activities_raw_{last_week_date}.csv")
     if os.path.exists(weekly_file):
-        logger.info(f"Raw data already exists for {last_week_date} to {running_date}")
+        logger.info(f"Raw data already exists for {last_week_date} to {execution_date}")
         # Load existing data and return it
         return pd.read_csv(weekly_file)
 
     try:
         processed_activities = set()
-        logger.info(f"Fetching activities {last_week_date} to {running_date}")
-        activities = client.get_activities_by_date(last_week_date, running_date)
+        logger.info(f"Fetching activities {last_week_date} to {execution_date}")
+        activities = client.get_activities_by_date(last_week_date, execution_date)
         if not activities:
             logger.info("No activities found for this period.")
             return None
@@ -216,16 +219,16 @@ def process_date_range(conn, start_date, end_date=None):
 
     current_date = start_date
     while current_date <= end_date:
-        # Set running_date to Sunday (end of week)
-        running_date = current_date + timedelta(days=6)
+        # Set execution_date to Sunday (end of week)
+        execution_date = current_date + timedelta(days=6)
         # Set last_week_date to Monday (start of week)
         last_week_date = current_date
         
         # Format dates as strings
-        running_date_str = running_date.strftime("%Y-%m-%d")
+        execution_date_str = execution_date.strftime("%Y-%m-%d")
         last_week_date_str = last_week_date.strftime("%Y-%m-%d")
         
-        logger.info(f"Processing week: {last_week_date_str} (Mon) to {running_date_str} (Sun)")
+        logger.info(f"Processing week: {last_week_date_str} (Mon) to {execution_date_str} (Sun)")
         
         try:
             # Clean up processed folder for this date if it exists
@@ -238,27 +241,27 @@ def process_date_range(conn, start_date, end_date=None):
                 logger.debug(f"Removed existing processed file for {last_week_date_str}")
 
             # Get raw data (either from API or existing file)
-            df_weekly_raw = extract_weekly_activities(client, last_week_date_str, running_date_str)
+            df_weekly_raw = extract_weekly_activities(client, last_week_date_str, execution_date_str)
             if df_weekly_raw is not None:
                 # Filter activities to ensure they are within the Monday-Sunday range
                 df_weekly_raw['startTimeLocal'] = pd.to_datetime(df_weekly_raw['startTimeLocal'])
                 mask = (df_weekly_raw['startTimeLocal'].dt.date >= last_week_date.date()) & \
-                      (df_weekly_raw['startTimeLocal'].dt.date <= running_date.date())
+                      (df_weekly_raw['startTimeLocal'].dt.date <= execution_date.date())
                 df_weekly_raw = df_weekly_raw[mask]
 
                 if not df_weekly_raw.empty:
                     # Always reprocess the data
                     df_weekly_preprocessed = main_preprocess(conn, last_week_date_str, df_weekly_raw)
                     if df_weekly_preprocessed is not None:
-                        logger.info(f"Successfully processed data for week ending {running_date_str}")
+                        logger.info(f"Successfully processed data for week ending {execution_date_str}")
                     else:
-                        logger.warning(f"Data processing failed for week ending {running_date_str}")
+                        logger.warning(f"Data processing failed for week ending {execution_date_str}")
                 else:
-                    logger.info(f"No activities found within Mon-Sun range for week ending {running_date_str}")
+                    logger.info(f"No activities found within Mon-Sun range for week ending {execution_date_str}")
             else:
-                logger.info(f"No activities found for week ending {running_date_str}")
+                logger.info(f"No activities found for week ending {execution_date_str}")
         except Exception as e:
-            logger.error(f"Error processing week ending {running_date_str}: {str(e)}")
+            logger.error(f"Error processing week ending {execution_date_str}: {str(e)}")
         
         # Move to next Monday
         current_date += timedelta(days=7)

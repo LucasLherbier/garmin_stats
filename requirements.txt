@@ -1,8 +1,11 @@
 streamlit
 pandas
 garminconnect
+garminexport
 requests
-pwinput
 pandas
-sqlite3
+sqlite-utils
 plotly
+folium
+streamlit-folium
+branca

@@ -35,59 +35,148 @@ def get_latest_activity_query(sport_type, limit=1):
         ORDER BY startTimeLocal DESC
         LIMIT {limit};
     """
-
+    
+    
 def get_metrics_for_period_query(sport_type, period_column, period_value):
     return f"""
         SELECT
-            SUM(duration) AS total_movingDuration,
-            SUM(distance) AS total_distance
+            SUM(duration) AS total_duration,
+            SUM(distance) AS total_distance,
+            AVG(averageHR) AS avg_hr,
+            AVG(elevationGain) AS avg_elevation_gain,
+            AVG(calories) AS total_calories,
+            AVG(maxHR) AS avg_max_hr,
+            AVG(minHR) AS avg_min_hr,
+            AVG(averageRunCadence) AS avg_run_cadence,
+            AVG(averageSpeed) AS avg_speed,
+            AVG(maxSpeed) AS avg_max_speed,
+            AVG(averageTemperature) AS avg_temp,
+            AVG(maxTemperature) AS avg_max_temp,
+            AVG(minTemperature) AS avg_min_temp,
+            SUM(waterEstimated) AS total_water_estimated,
+            SUM(vigorousIntensityMinutes) AS total_vigorous_intensity
         FROM activities
         WHERE activityTypeGrouped = '{sport_type}'
         AND {period_column} = '{period_value}';
     """
 
 def get_weekly_metrics_with_delta_query(sport_type):
-    return """
-        WITH WeeklyMetrics AS (
-            SELECT 
-                Week,
-                SUM(duration) as total_duration,
-                SUM(distance) as total_distance
-            FROM activities 
-            WHERE activityTypeGrouped = ? 
-            GROUP BY Week
-            ORDER BY Week DESC
-            LIMIT 2
-        )
-        SELECT 
-            first.total_duration as current_duration,
-            first.total_distance as current_distance,
-            (first.total_duration - second.total_duration) as duration_delta,
-            (first.total_distance - second.total_distance) as distance_delta
-        FROM (
-            SELECT * FROM WeeklyMetrics LIMIT 1
-        ) first
-        LEFT JOIN (
-            SELECT * FROM WeeklyMetrics LIMIT 1 OFFSET 1
-        ) second;
+    return f"""
+       WITH WeeklyMetrics AS (
+    SELECT
+        Week,
+        SUM(duration) as total_duration,
+        SUM(distance) as total_distance,
+        AVG(averageHR) as avg_hr,
+        SUM(elevationGain) as total_elevation_gain,
+        AVG(elevationGain) as avg_elevation_gain,
+        SUM(calories) as total_calories,
+        AVG(calories) as avg_calories,
+        MAX(maxHR) as max_hr,
+        MIN(minHR) as min_hr,
+        AVG(averageRunCadence) as avg_run_cadence,
+        AVG(averageSpeed) as avg_speed,
+        AVG(averageTemperature) as avg_temp,
+        SUM(waterEstimated) as total_water_estimated,
+        AVG(waterEstimated) as avg_water_estimated,
+        SUM(vigorousIntensityMinutes) as total_vigorous_intensity,
+        AVG(vigorousIntensityMinutes) as avg_vigorous_intensity
+    FROM activities
+    WHERE activityTypeGrouped = '{sport_type}'
+    GROUP BY Week
+    ORDER BY Week DESC
+    LIMIT 2
+)
+SELECT
+    first.Week as current_week,
+    first.total_duration as current_duration,
+    first.total_distance as current_distance,
+    first.avg_hr as current_avg_hr,
+    first.total_elevation_gain as current_total_elevation_gain,
+    first.avg_elevation_gain as current_avg_elevation_gain,
+    first.total_calories as current_total_calories,
+    first.avg_calories as current_avg_calories,
+    first.max_hr as current_max_hr,
+    first.min_hr as current_min_hr,
+    first.avg_run_cadence as current_avg_run_cadence,
+    first.avg_speed * 3.6 as current_avg_speed,
+    first.avg_temp as current_avg_temp,
+    first.total_water_estimated as current_total_water_estimated,
+    first.avg_water_estimated as current_avg_water_estimated,
+    first.total_vigorous_intensity as current_total_vigorous_intensity,
+    first.avg_vigorous_intensity as current_avg_vigorous_intensity,
+    (first.total_duration - COALESCE(second.total_duration, 0)) as duration_delta,
+    (first.total_distance - COALESCE(second.total_distance, 0)) as distance_delta,
+    (first.avg_hr - COALESCE(second.avg_hr, 0)) as avg_hr_delta,
+    (first.avg_run_cadence - COALESCE(second.avg_run_cadence, 0)) as avg_run_cadence_delta,
+    (first.avg_speed - COALESCE(second.avg_speed, 0)) * 3.6 as avg_speed_delta,
+    (first.avg_temp - COALESCE(second.avg_temp, 0)) as avg_temp_delta
+FROM (
+    SELECT * FROM WeeklyMetrics LIMIT 1
+) first
+LEFT JOIN (
+    SELECT * FROM WeeklyMetrics LIMIT 1 OFFSET 1
+) second ON 1=1;
+
     """
 
-def get_recent_activities_query(sport_type, days=14):
+
+def get_recent_activities_query(sport_type, timerange):
+    time_filters = {
+        '8_weeks': {
+            'start': 'date("now", "-84 days", "weekday 1")',  # Start on Monday of 8 weeks ago
+            'end': 'date("now", "weekday 1")'  # End on Monday of current week
+        },
+        '6_months': {
+            'start': 'date("now", "-6 months", "weekday 1")',  # Start on Monday of 6 months ago
+            'end': 'date("now", "weekday 1")'  # End on Monday of current week
+        },
+        'ytd': {
+            'start': 'date(strftime("%Y", "now") || "-01-01", "weekday 1")',  # Start on the first Monday of the year
+            'end': 'date("now", "weekday 1")'  # End on Monday of current week
+        },
+        'all': {
+            'start': '(SELECT date(min(Week), "weekday 1") FROM activities WHERE activityTypeGrouped = "running")',
+            'end': '(SELECT date(max(Week), "weekday 1") FROM activities WHERE activityTypeGrouped = "running")'
+        }
+    }
+
+    start_date = time_filters[timerange]['start']
+    end_date = time_filters[timerange]['end']
     return f"""
-        SELECT 
-            startTimeLocal,
-            activityName,
-            distance,
-            duration,
-            averageHR,
-            maxHR,
-            trainingEffectLabel,
-            locationName,
-            differenceBodyBattery
-        FROM activities
-        WHERE activityTypeGrouped = '{sport_type}'
-        AND startTimeLocal >= datetime('now', '-{days} days')
-        ORDER BY startTimeLocal DESC;
+
+        WITH RECURSIVE date_series AS (
+            SELECT {start_date} AS Week
+            UNION ALL
+            SELECT date(Week, '+7 days')
+            FROM date_series
+            WHERE date(Week, '+7 days') < {end_date}
+        )
+
+          SELECT 
+            act.Day, 
+            act.startTimeLocal,
+            act.locationName, 
+            act.activityId, 
+            act.distance,
+            time(act.duration, 'unixepoch') as duration, 
+            act.calories, 
+            act.averageHR,
+            act.elevationGain,
+            act.averageSpeed*3.6 as averageSpeed, 
+            act.averageRunCadence, 
+            act.elevationLoss, 
+            act.trainingEffect,  
+            act.trainingEffectLabel, 
+            act.maxHR, 
+            act.minHR
+       
+        FROM activities act
+        JOIN date_series ds
+            ON strftime('%Y-%m-%d', ds.Week) = act.Week
+         WHERE act.activityTypeGrouped = '{sport_type}'
+        ORDER BY act.Day desc;
+      
     """
 
 
@@ -131,7 +220,6 @@ def get_running_distance_by_timerange_query(timerange):
     GROUP BY ds.Week
     ORDER BY ds.Week;
     """
-
 
 
 def get_biking_distance_by_timerange_query(timerange):
