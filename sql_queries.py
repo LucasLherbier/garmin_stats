@@ -154,11 +154,8 @@ def get_recent_activities_query(sport_type, timerange):
         )
 
           SELECT 
-            act.Day, 
-            act.startTimeLocal,
-            act.locationName, 
-            act.activityId, 
-            act.distance,
+            act.Day,    
+            ROUND(act.distance, 2) as distance,
             time(act.duration, 'unixepoch') as duration, 
             act.calories, 
             act.averageHR,
@@ -166,10 +163,13 @@ def get_recent_activities_query(sport_type, timerange):
             act.averageSpeed*3.6 as averageSpeed, 
             act.averageRunCadence, 
             act.elevationLoss, 
-            act.trainingEffect,  
-            act.trainingEffectLabel, 
             act.maxHR, 
-            act.minHR
+            act.minHR, 
+            act.startTimeLocal,
+            act.locationName, 
+            act.activityId, 
+                        act.trainingEffect,  
+            act.trainingEffectLabel
        
         FROM activities act
         JOIN date_series ds

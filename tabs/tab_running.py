@@ -3,7 +3,8 @@ import pandas as pd
 from datetime import timedelta, datetime
 import os
 import xml.etree.ElementTree as ET
-
+import plotly.graph_objects as go
+import numpy as np
 from sql_queries import (
     get_weekly_metrics_with_delta_query,
     get_running_distance_by_timerange_query,
@@ -11,7 +12,8 @@ from sql_queries import (
 )
 
 from actions.display_map import display_gpx_map
-
+from actions.parse_tcx import parse_tcx_to_dataframe
+from actions.running_pace_bar_plot import plot_pace_bar
 import plotly.express as px
 
 def format_duration(seconds):
@@ -192,6 +194,112 @@ def show(conn):
                 pass
             else:
                 st.error("GPX file not found.")
+                
+            # Check for TCX file
+            tcx_file_path = os.path.join(activity_output_dir, f"{str(selected_row_id)}.tcx")
+            if os.path.exists(tcx_file_path):
+                # Parse TCX file to DataFrame
+                df = parse_tcx_to_dataframe(tcx_file_path)
+                columns_to_display = ['Pace',  'HeartRate',  'Speed', 'Cadence', 'Watts', 'Altitude']
+
+                # Remplacez votre sélecteur par ces boutons
+                st.subheader("Sélectionnez les données à afficher")
+                cols = st.columns(3)
+                with cols[0]:
+                    show_pace = st.checkbox("Pace", value=False)
+                    show_speed = st.checkbox("Speed", value=False)
+                with cols[1]:
+                    show_hr = st.checkbox("HeartRate", value=True)
+                    show_cadence = st.checkbox("Cadence", value=False)
+                with cols[2]:
+                    show_watts = st.checkbox("Watts", value=True)
+                    show_altitude = st.checkbox("Altitude", value=False)
+
+
+                fig = go.Figure()  # Initialisation explicite
+
+                if show_pace or show_speed or show_hr or show_cadence or show_watts or show_altitude:
+                    # Liste pour stocker les données normalisées et les infos d'affichage
+                    metrics = []
+
+                    if show_pace:
+                        data = df['Pace_seconds'].dropna()
+                        q01, q99 = np.quantile(data, 0.01), np.quantile(data, 0.99)
+                        normalized = (data - q01) / (q99 - q01)
+                        normalized = normalized.clip(0, 1)  # Limiter entre 0 et 1
+                        metrics.append(('Pace', normalized, data, 'blue', "Pace: %{customdata:.2f} (mm:ss)"))
+
+                    if show_speed:
+                        data = df['Speed'].dropna()
+                        q01, q99 = np.quantile(data, 0.01), np.quantile(data, 0.99)
+                        normalized = (data - q01) / (q99 - q01)
+                        normalized = normalized.clip(0, 1)
+                        metrics.append(('Speed', normalized, data, 'orange', "Speed: %{customdata:.2f} m/s"))
+
+                    if show_hr:
+                        data = df['HeartRate'].dropna()
+                        q01, q99 = np.quantile(data, 0.01), np.quantile(data, 0.99)
+                        normalized = (data - q01) / (q99 - q01)
+                        normalized = normalized.clip(0, 1)
+                        metrics.append(('HeartRate', normalized, data, 'red', "HeartRate: %{customdata:.0f} bpm"))
+
+                    if show_cadence:
+                        data = df['Cadence'].dropna()
+                        q01, q99 = np.quantile(data, 0.01), np.quantile(data, 0.99)
+                        normalized = (data - q01) / (q99 - q01)
+                        normalized = normalized.clip(0, 1)
+                        metrics.append(('Cadence', normalized, data, 'purple', "Cadence: %{customdata:.0f} spm"))
+
+                    if show_watts:
+                        data = df['Watts'].dropna()
+                        q01, q99 = np.quantile(data, 0.01), np.quantile(data, 0.99)
+                        normalized = (df['Watts'] - q01) / (q99 - q01)
+                        normalized = normalized.clip(0, 1)
+                        metrics.append(('Watts', normalized, df['Watts'], 'pink', "Watts: %{customdata:.0f} W"))
+
+                    if show_altitude:
+                        data = df['Altitude'].dropna()
+                        q01, q99 = np.quantile(data, 0.01), np.quantile(data, 0.99)
+                        normalized = (data - q01) / (q99 - q01)
+                        normalized = normalized.clip(0, 1)
+                        metrics.append(('Altitude', normalized, data, 'green', "Altitude: %{customdata:.1f} m"))
+
+                    # Ajouter les courbes normalisées au graphique
+                    for name, normalized, real_data, color, hovertemplate in metrics:
+                        fig.add_scatter(
+                            x=df['Time'],
+                            y=normalized,
+                            name=name,
+                            line=dict(color=color),
+                            customdata=real_data,
+                            hovertemplate=hovertemplate + "<extra></extra>",
+                        )
+
+                    # Configurer l'axe Y entre 0 et 1
+                    fig.update_layout(
+                        title="Activity Data (Normalized 0-1)",
+                        xaxis_title="Time",
+                        yaxis=dict(range=[0, 1], title="Normalized Value (0-1)"),
+                        hovermode="x unified",
+                        height=600,
+                    )
+
+                st.plotly_chart(fig, use_container_width=True)
+
+
+
+
+            else:
+                st.error("TCX file not found.")
+                
+            st.subheader("Avg Moving Pace per Split")
+            split_file_path = os.path.join(activity_output_dir, f"{str(selected_row_id)}.csv")
+            if os.path.exists(split_file_path):
+                pace_fig = plot_pace_bar(split_file_path)
+                st.plotly_chart(pace_fig, use_container_width=True)
+            else :
+                st.warning(f"Split file not found")
+
 
     else:
         st.info("No running activities found.")

@@ -89,4 +89,3 @@ def main(df):
         monthly_df = aggregate_activities(df, granularity='monthly')
         yearly_df = aggregate_activities(df, granularity='yearly')
         print("Weekly Aggregated Data:")
-        print(weekly_df.head())

@@ -16,7 +16,6 @@ import tabs.tab_running as tab_running
 import tabs.tab_race as tab_race
 import os
 import sys
-import actions.utils as utils
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 db_path = os.path.join(script_dir, "activities.db")
