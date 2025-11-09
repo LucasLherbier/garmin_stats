@@ -6,6 +6,10 @@ __pycache__/
 # C extensions
 *.so
 
+# Custom additions
+*.db
+*.ipynb
+*.json
 # Distribution / packaging
 .Python
 build/
@@ -31,6 +35,14 @@ MANIFEST
 #  before PyInstaller builds the exe, so as to inject date/other infos into it.
 *.manifest
 *.spec
+
+# venv/
+garminvenv/
+
+# Data
+*.csv
+*.gpx
+*.tcx
 
 # Installer logs
 pip-log.txt
