@@ -7,21 +7,20 @@ import plotly.graph_objects as go
 import numpy as np
 import sql_queries as sql
 
-
 from actions.display_map import display_gpx_map
 from actions.parse_tcx import parse_tcx_to_dataframe
-from actions.running_pace_bar_plot import plot_pace_bar
+from actions.running_pace_bar_plot import plot_pace_bar  # This may be replaced with a cycling pace plot if needed
 import plotly.express as px
 from plotly.subplots import make_subplots
 from actions import utils as ut
 
 
 def show(conn):
-    st.subheader("Running Metrics")
+    st.subheader("Cycling Metrics")
 
-    # Fetch race metrics
+    # Fetch race metrics for cycling
     race_metrics = pd.read_sql(
-        sql.get_volume_metrics_query("running"),
+        sql.get_volume_metrics_query("cycling"),
         conn
     )
 
@@ -69,11 +68,11 @@ def show(conn):
             with col7:
                 st.markdown(f"<div style='text-align: center; background-color: rgba(220, 20, 60, 0.2); padding: 0.5rem; border-radius: 0.25rem; border: 1px solid rgba(220, 20, 60, 0.3);'>{race_metrics_filtered['elevationGain'].item() or 0:.0f}</div>", unsafe_allow_html=True)
             with col8:
-                st.markdown(f"<div style='text-align: center; background-color: rgba(220, 20, 60, 0.2); padding: 0.5rem; border-radius: 0.25rem; border: 1px solid rgba(220, 20, 60, 0.3);'>{race_metrics_filtered['calories'].item() or 0:.0f}</div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='text-align: center; background-color: rgba(220, 20, 60, 0.2); padding: 0.5rem; border-radius: 0.0.25rem; border: 1px solid rgba(220, 20, 60, 0.3);'>{race_metrics_filtered['calories'].item() or 0:.0f}</div>", unsafe_allow_html=True)
             with col9:
                 st.markdown(f"<div style='text-align: center; background-color: rgba(220, 20, 60, 0.2); padding: 0.5rem; border-radius: 0.25rem; border: 1px solid rgba(220, 20, 60, 0.3);'>{race_metrics_filtered['averageHR'].item() or 0:.0f}</div>", unsafe_allow_html=True)
 
-    st.subheader("Running Distance Over Time")
+    st.subheader("Cycling Distance Over Time")
 
     # Initialisation de la session state si nécessaire
     if 'time_range_metrics' not in st.session_state:
@@ -103,9 +102,9 @@ def show(conn):
             st.rerun()
 
     # Récupération des données et affichage du graphique
-    running_data = pd.read_sql(sql.get_weekly_sport_query('running', st.session_state.time_range_metrics), conn)
+    cycling_data = pd.read_sql(sql.get_weekly_sport_query('cycling', st.session_state.time_range_metrics), conn)
 
-    if not running_data.empty:
+    if not cycling_data.empty:
         # Adaptation du titre selon la sélection
         time_range_label = {
             "8_weeks": "Latest 8 Weeks",
@@ -115,10 +114,10 @@ def show(conn):
         }.get(st.session_state.time_range_metrics, st.session_state.time_range_metrics)
 
         fig = px.area(
-            running_data,
+            cycling_data,
             x="Week",
-            y="total_distance",
-            title=f"Running Distance by Week ({time_range_label})",
+            y="total_distance",  # Replace with cycling-specific metric if needed
+            title=f"Cycling Distance by Week ({time_range_label})",
             markers=True
         )
         fig.update_traces(textposition='top center', texttemplate='%{y:.2f}')
@@ -126,54 +125,55 @@ def show(conn):
     else:
         st.warning(f"No data available for the selected time range: {time_range_label}")
 
-
-    st.subheader("Recent Running Activities")
-
+    st.subheader("Recent Cycling Activities")
 
     # Fetch activities data based on the selected time range for activities
-    running_table = pd.read_sql(sql.get_recent_activities_query('running', st.session_state.time_range_metrics), conn)
+    cycling_table = pd.read_sql(sql.get_recent_activities_query('cycling', st.session_state.time_range_metrics), conn)
 
-    if not running_table.empty:
-        # Define column configurations
+    if not cycling_table.empty:
+        # Define column configurations for cycling data
         column_configuration = {
             "Day": st.column_config.TextColumn("Day", width="small"),
-            "Type": st.column_config.TextColumn("Type", width="small"),
-            "Activity ID": st.column_config.TextColumn("Activity ID", width="small"),
-            "Distance (km)": st.column_config.NumberColumn("Distance (km)", width="small"),
-            "Duration": st.column_config.TextColumn("Duration", width="small"),
-            "Calories": st.column_config.NumberColumn("Calories", width="small"),
-            "Avg HR": st.column_config.NumberColumn("Avg HR", width="small"),
-            "Elevation Gain (m)": st.column_config.NumberColumn("Elevation Gain (m)", width="small"),
-            "Avg Speed (km/h)": st.column_config.NumberColumn("Avg Speed (km/h)", width="small"),
-            "Avg Cadence": st.column_config.NumberColumn("Avg Cadence", width="small"),
-            "Elevation Loss (m)": st.column_config.NumberColumn("Elevation Loss (m)", width="small"),
-            "Training Effect": st.column_config.TextColumn("Training Effect", width="small"),
-            "Training Effect Label": st.column_config.TextColumn("Training Effect Label", width="small"),
-            "Max HR": st.column_config.NumberColumn("Max HR", width="small"),
-            "Min HR": st.column_config.NumberColumn("Min HR", width="small"),
+            "type": st.column_config.TextColumn("Type", width="small"),
+            "activityId": st.column_config.TextColumn("Activity ID", width="small"),
+            "distance": st.column_config.NumberColumn("Distance (km)", width="small"),
+            "duration": st.column_config.TextColumn("Duration", width="small"),
+            "calories": st.column_config.NumberColumn("Calories", width="small"),
+            "averageHR": st.column_config.NumberColumn("Avg HR", width="small"),
+            "elevationGain": st.column_config.NumberColumn("Elevation Gain (m)", width="small"),
+            "elevationLoss": st.column_config.NumberColumn("Elevation Loss (m)", width="small"),
+            "averageSpeed": st.column_config.NumberColumn("Avg Speed (km/h)", width="small"),
+            "maxSpeed": st.column_config.NumberColumn("Max Speed (km/h)", width="small"),
+            "averageTemperature": st.column_config.NumberColumn("Avg Temperature (°C)", width="small"),
+            "maxHR": st.column_config.NumberColumn("Max HR", width="small"),
+            "minHR": st.column_config.NumberColumn("Min HR", width="small"),
+            "waterEstimated": st.column_config.NumberColumn("Water Estimated", width="small"),
         }
-        # Rename columns for display
+
+        # Optional: map internal column names to display names if you need a different order or label
         display_columns = {
             'Day': 'Day',
             'distance': 'Distance (km)',
             'duration': 'Duration',
             'elevationGain': 'Elevation Gain (m)',
+            'elevationLoss': 'Elevation Loss (m)',
             'calories': 'Calories',
             'averageHR': 'Avg HR',
             'averageSpeed': 'Avg Speed (km/h)',
-            'averageRunCadence': 'Avg Cadence',
-            'elevationLoss': 'Elevation Loss (m)',
-            'trainingEffectLabel': 'Training Effect Label',
-            'trainingEffect': 'Training Effect',
+            'maxSpeed': 'Max Speed (km/h)',
+            'averageTemperature': 'Avg Temperature (°C)',
             'maxHR': 'Max HR',
             'minHR': 'Min HR',
             'locationName': 'Location',
             'activityName': 'Activity Name',
-            'activityTypeGrouped': 'Type',
+            'type': 'Type',
             'activityId': 'Activity ID',
+            'waterEstimated': 'Water Estimated',
+            'activityName': 'Activity Name',
         }
-        available_columns = {col: display_columns[col] for col in display_columns if col in running_table.columns}
-        display_df = running_table[list(available_columns.keys())].rename(columns=display_columns)
+                
+        available_columns = {col: display_columns[col] for col in display_columns if col in cycling_table.columns}
+        display_df = cycling_table[list(available_columns.keys())].rename(columns=display_columns)
 
         # Pagination logic
         page_size = 10
@@ -195,7 +195,7 @@ def show(conn):
             hide_index=True,
             on_select="rerun",
             selection_mode="single-row",
-            key="running_dataframe",  # Clé fixe pour conserver la sélection
+            key="cycling_dataframe",  # Fixed key to keep selection
         )
 
         # Pagination UI at the bottom
@@ -218,31 +218,35 @@ def show(conn):
             if st.button("Last ⏩", use_container_width=True, disabled=st.session_state.current_page == total_pages):
                 st.session_state.current_page = total_pages
                 st.rerun()
-                
+
         # Check if a row is selected
         if selected_rows and len(selected_rows["selection"]["rows"]) > 0:
             selected_row_index = selected_rows["selection"]["rows"][0]
             selected_row_data = paginated_df.iloc[selected_row_index]
-            # Vérifiez que la colonne 'Activity ID' existe dans paginated_df
+            
+            # Check if the column 'Activity ID' exists in paginated_df
             if 'Activity ID' in paginated_df.columns:
                 selected_row_id = selected_row_data['Activity ID']
                 st.write(f"Selected Activity ID: {selected_row_id}")
+
                 # Create a list of metrics to display
                 metrics = [
                     ("Distance (km)", f"{selected_row_data.get('Distance (km)', 0):.2f}"),
                     ("Duration", selected_row_data.get('Duration', 0)),
-                    ("Avg HR", f"{selected_row_data.get('Avg HR', 0):.0f}"),
                     ("Elevation Gain (m)", f"{selected_row_data.get('Elevation Gain (m)', 0):.0f}"),
-                    ("Calories", f"{selected_row_data.get('Calories', 0):.0f}"),
                     ("Avg Speed (km/h)", f"{selected_row_data.get('Avg Speed (km/h)', 0):.2f}"),
-                    ("Avg Cadence", f"{selected_row_data.get('Avg Cadence', 0):.1f}"),
-                    ("Elevation Loss (m)", f"{selected_row_data.get('Elevation Loss (m)', 0):.0f}")
+                    ("Avg HR", f"{selected_row_data.get('Avg HR', 0):.0f}"),
+                    ("Calories", f"{selected_row_data.get('Calories', 0):.0f}"),
+                    ("Water Estimated", f"{selected_row_data.get('Water Estimated', 0):.0f}"),
+                    ("Elevation Loss (m)", f"{selected_row_data.get('Elevation Loss (m)', 0):.0f}"),
+                    ("Max Speed (km/h)", f"{selected_row_data.get('Max Speed (km/h)', 0):.0f}"),
+                    ("Max HR", f"{selected_row_data.get('Max HR', 0):.0f}"),
                 ]
 
-                # Display metrics in 5 columns per row
-                for i in range(0, len(metrics), 4):
-                    cols = st.columns(4)
-                    for j, (name, value) in enumerate(metrics[i:i+4]):
+                # Display metrics in 4 columns per row
+                for i in range(0, len(metrics), 5):
+                    cols = st.columns(5)
+                    for j, (name, value) in enumerate(metrics[i:i+5]):
                         with cols[j]:
                             st.metric(name, value)
 
@@ -253,18 +257,20 @@ def show(conn):
                 gpx_file_path = os.path.join(activity_output_dir, f"{str(selected_row_id)}.gpx")
                 if os.path.exists(gpx_file_path):
                     display_gpx_map(gpx_file_path) 
-                    pass
                 else:
                     st.error("GPX file not found.")
 
-                st.subheader("Avg Moving Pace per Split")
-                split_file_path = os.path.join(activity_output_dir, f"{str(selected_row_id)}.csv")
-                if os.path.exists(split_file_path):
-                    pace_fig = plot_pace_bar(split_file_path)
-                    st.plotly_chart(pace_fig, use_container_width=True)
-                else :
-                    st.warning(f"Split file not found")
-                                        
+
+                print('selected_row_data\n\n\n\n\n\n', display_df)
+
+                # st.subheader("Avg Moving Pace per Split")
+                # split_file_path = os.path.join(activity_output_dir, f"{str(selected_row_id)}.csv")
+                # if os.path.exists(split_file_path):
+                #     pace_fig = plot_pace_bar(split_file_path)
+                #     st.plotly_chart(pace_fig, use_container_width=True)
+                # else:
+                #     st.warning(f"Split file not found")
+
                 # Check for TCX file
                 tcx_file_path = os.path.join(activity_output_dir, f"{str(selected_row_id)}.tcx")
                 if os.path.exists(tcx_file_path):
@@ -346,11 +352,5 @@ def show(conn):
                     st.plotly_chart(fig, use_container_width=True)
                 else:
                     st.error("TCX not found")
-            else:
-                st.error("La colonne 'Activity ID' est introuvable dans les données affichées.")
-
-
-
-
     else:
-        st.info("No running activities found.")
+        st.info("No cycling activities found.")

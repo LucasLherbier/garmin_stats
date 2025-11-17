@@ -4,6 +4,7 @@ from datetime import timedelta
 import sql_queries as sql 
 import plotly.express as px
 import uuid
+from actions import utils as ut
 
 def format_duration(seconds):
     if seconds is None:
@@ -113,19 +114,19 @@ def show(conn):
         
         # Initialize session state if not exists
         if 'granularity' not in st.session_state:
-            st.session_state.granularity = 'Week'
+            st.session_state.granularity = 'week'
         
         # Create button columns for better spacing
         col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 4])
         
         with col_btn1:
-            if st.button("📅 Week", use_container_width=True, type="primary" if st.session_state.granularity == 'Week' else "secondary"):
-                st.session_state.granularity = 'Week'
+            if st.button("📅 Week", use_container_width=True, type="primary" if st.session_state.granularity == 'week' else "secondary"):
+                st.session_state.granularity = 'week'
                 st.rerun()
         
         with col_btn2:
-            if st.button("📆 Month", use_container_width=True, type="primary" if st.session_state.granularity == 'Month' else "secondary"):
-                st.session_state.granularity = 'Month'
+            if st.button("📆 Month", use_container_width=True, type="primary" if st.session_state.granularity == 'month' else "secondary"):
+                st.session_state.granularity = 'month'
                 st.rerun()
 
         granularity = st.session_state.granularity
@@ -151,10 +152,6 @@ def show(conn):
                 ),
                 conn
             )
-            print(selected_race_data['start'], 
-                    selected_race_data['end'], 
-                    granularity, 
-                    sport['name'])
             if not sport_data.empty:
                 fig = px.area(
                     sport_data,
@@ -177,50 +174,24 @@ def show(conn):
     else:
         st.warning("No data available for the selected race period.")
 
+
     # Fetch activity duration data based on the selected granularity and race dates
+   
+
     activity_duration_data = pd.read_sql(
-        sql.get_activity_duration_by_granularity_query(
-            selected_race_data['start'], 
-            selected_race_data['end'], 
-            st.session_state.granularity
-        ),
-        conn
-    )
-
-    # Format the duration to hh:mm:ss
-    activity_duration_data['FormattedDuration'] = activity_duration_data['Duration'].apply(format_duration)
-
-    # Create a stacked bar plot
-    if not activity_duration_data.empty:
-        fig = px.bar(
-            activity_duration_data,
-            x="TimePeriod",
-            y="Duration",
-            color="activityTypeGrouped",
-            title=f"Activity Duration by {st.session_state.granularity}",
-            labels={"TimePeriod": "Time Period", "Duration": "Duration (seconds)"}
+            sql.get_activity_duration_by_granularity_query(
+                selected_race_data['start'], 
+                selected_race_data['end'], 
+                st.session_state.granularity
+            ),
+            conn
         )
-        # Update traces to show formatted duration as text on the bars
-        # Ensure that the text is set for each trace individually
-        for trace in fig.data:
-            trace_name = trace.name  # Get the name of the trace (activityTypeGrouped)
-            trace_text = activity_duration_data.loc[activity_duration_data['activityTypeGrouped'] == trace_name, 'FormattedDuration']
-            trace.text = trace_text.tolist()
+    if not activity_duration_data.empty:
+        ut.plot_week_volume(
+            activity_duration_data,
+            st.session_state.granularity
+        )
         
-        # Update layout to reflect the correct y-axis title
-        fig.update_layout(yaxis_title="Duration (hh:mm:ss)")
-            
-        # Define tick values and their corresponding formatted labels
-        max_duration = int(activity_duration_data['Duration'].max()*1.75)  # Ensure max_duration is an integer
-        tickvals = list(range(0, max_duration + 1, 7200))  # Every 2 hours
-        ticktext = [format_duration(val) for val in tickvals]
-        
-        # Set the y-axis ticks to display formatted durations
-        fig.update_yaxes(tickvals=tickvals, ticktext=ticktext, range=[0, max_duration])
-        
-        # Use a unique key for the plotly chart
-        st.plotly_chart(fig, key=f"activity_duration_chart_{sport['name']}_{uuid.uuid4()}")
-
     # Use a unique key for the plotly chart
     else:
         st.warning(f"No activity duration data available for the selected granularity: {st.session_state.granularity}")

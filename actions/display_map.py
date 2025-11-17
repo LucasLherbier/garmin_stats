@@ -5,7 +5,10 @@ import streamlit as st
 
 def display_gpx_map(gpx_file_path):
     # Parse the GPX file
-    namespace = {'default': 'http://www.topografix.com/GPX/1/1', 'ns3': 'http://www.garmin.com/xmlschemas/TrackPointExtension/v1'}
+    namespace = {
+        'default': 'http://www.topografix.com/GPX/1/1',
+        'ns3': 'http://www.garmin.com/xmlschemas/TrackPointExtension/v1'
+    }
     tree = ET.parse(gpx_file_path)
     root = tree.getroot()
 
@@ -18,17 +21,23 @@ def display_gpx_map(gpx_file_path):
                 lon = float(trkpt.attrib['lon'])
                 track_points.append((lat, lon))
 
-    # Create a Streamlit app
     st.title("GPX Track Viewer")
 
-    # Create a map centered around the first track point
     if track_points:
-        m = folium.Map(location=track_points[0], zoom_start=13)
+        # Center the map on the middle point of the track
+        mid_index = len(track_points) // 2
+        center_lat, center_lon = track_points[mid_index]
 
-        # Add track points to the map
+        # Use full width of the Streamlit container
+        m = folium.Map(location=(center_lat, center_lon), zoom_start=13, width='100%', height='600')
+
+        # Add track to the map
         folium.PolyLine(track_points, color="blue", weight=2.5, opacity=1).add_to(m)
 
-        # Display the map in the Streamlit app
-        st_folium(m, width=700, height=500)
+        # Fit the map to the track bounds
+        m.fit_bounds(track_points)
+
+        # Display map
+        st_folium(m, width="100%", height=600)
     else:
-        st.write("No track points found.")
+        st.warning("No track points found.")

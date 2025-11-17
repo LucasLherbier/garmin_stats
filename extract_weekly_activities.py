@@ -140,7 +140,6 @@ def extract_weekly_activities(client, last_week_date, execution_date):
                     (client.ActivityDownloadFormat.GPX, ".gpx"),
                     (client.ActivityDownloadFormat.TCX, ".tcx"),
                     (client.ActivityDownloadFormat.CSV, ".csv")
-                    (client.ActivityDownloadFormat.ORIGINAL, ".csv")
                 ]
                 all_saved = True
                 for fmt, ext in formats:
