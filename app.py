@@ -10,6 +10,7 @@ import tabs.tab_cycling as tab_cycling
 import tabs.tab_running as tab_running
 import tabs.tab_race as tab_race
 import tabs.tab_overview as tab_overview
+import tabs.tab_stats as tab_stats
 
 import os
 import sys
@@ -51,7 +52,7 @@ def main():
 
     # Sidebar tabs
     st.sidebar.header("Tabs")
-    tab = st.sidebar.radio("Select Tab", ["Overview","Running", "Swimming", "Cycling", "Race"])
+    tab = st.sidebar.radio("Select Tab", ["Stats", "Overview","Running", "Swimming", "Cycling", "Race"])
 
     if tab == "Overview":
         tab_overview.show(conn)
@@ -60,11 +61,11 @@ def main():
     elif tab == "Cycling":
         tab_cycling.show(conn)
     elif tab == "Running":
-        # Time range selector for running distance chart (main panel)
         tab_running.show(conn)
     elif tab == "Race":
-        # Time range selector for running distance chart (main panel)
         tab_race.show(conn)
+    elif tab == "Stats":
+        tab_stats.show(conn)
 
 
 if __name__ == "__main__":

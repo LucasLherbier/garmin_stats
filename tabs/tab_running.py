@@ -172,56 +172,18 @@ def show(conn):
             'activityTypeGrouped': 'Type',
             'activityId': 'Activity ID',
         }
-        available_columns = {col: display_columns[col] for col in display_columns if col in running_table.columns}
-        display_df = running_table[list(available_columns.keys())].rename(columns=display_columns)
-
-        # Pagination logic
-        page_size = 10
-        total_pages = (len(display_df) + page_size - 1) // page_size
-
-        # Initialize current_page in session_state if not present
-        if "current_page" not in st.session_state:
-            st.session_state.current_page = 1
-
-        # Calculate start and end indices
-        start_idx = (st.session_state.current_page - 1) * page_size
-        end_idx = start_idx + page_size
-        paginated_df = display_df.iloc[start_idx:end_idx]
-
-        # Display the paginated dataframe
-        selected_rows = st.dataframe(
-            paginated_df,
-            column_config=column_configuration,
-            hide_index=True,
-            on_select="rerun",
-            selection_mode="single-row",
-            key="running_dataframe",  # Clé fixe pour conserver la sélection
+        paginated_df, selected_row = ut.paginated_table(
+            df=running_table,
+            display_columns=display_columns,
+            column_configuration=column_configuration,
+            page_size=10,
+            session_key="running"
         )
 
-        # Pagination UI at the bottom
-        col1, col2, col3, col4, col5 = st.columns([1, 1, 1, 1, 4])
-        with col1:
-            if st.button("⏪ First", use_container_width=True, disabled=st.session_state.current_page == 1):
-                st.session_state.current_page = 1
-                st.rerun()
-        with col2:
-            if st.button("← Prev", use_container_width=True, disabled=st.session_state.current_page == 1):
-                st.session_state.current_page -= 1
-                st.rerun()
-        with col3:
-            st.markdown(f"<div style='text-align: center; margin-top: 7px;'><strong>{st.session_state.current_page} / {total_pages}</strong></div>", unsafe_allow_html=True)
-        with col4:
-            if st.button("Next →", use_container_width=True, disabled=st.session_state.current_page == total_pages):
-                st.session_state.current_page += 1
-                st.rerun()
-        with col5:
-            if st.button("Last ⏩", use_container_width=True, disabled=st.session_state.current_page == total_pages):
-                st.session_state.current_page = total_pages
-                st.rerun()
                 
         # Check if a row is selected
-        if selected_rows and len(selected_rows["selection"]["rows"]) > 0:
-            selected_row_index = selected_rows["selection"]["rows"][0]
+        if selected_row and len(selected_row["selection"]["rows"]) > 0:
+            selected_row_index = selected_row["selection"]["rows"][0]
             selected_row_data = paginated_df.iloc[selected_row_index]
             # Vérifiez que la colonne 'Activity ID' existe dans paginated_df
             if 'Activity ID' in paginated_df.columns:

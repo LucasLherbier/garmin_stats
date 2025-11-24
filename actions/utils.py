@@ -183,3 +183,122 @@ def compute_date_range(key):
         start = None
 
     return start, end
+
+import streamlit as st
+
+def paginated_table(
+    df,
+    display_columns,
+    column_configuration=None,
+    page_size=10,
+    session_key="table"
+):
+    """
+    Reusable paginated dataframe component.
+    
+    Parameters
+    ----------
+    df : pd.DataFrame
+    display_columns : dict
+        Mapping {column_name → display_label}
+    column_configuration : dict or None
+        Config for st.dataframe()
+    page_size : int
+        Number of rows per page
+    session_key : str
+        Unique key for session_state pagination + table
+    
+    Returns
+    -------
+    paginated_df : pd.DataFrame
+    selected_row : dict or None
+    """
+
+    # -----------------------------------
+    # Filter available columns
+    # -----------------------------------
+    available_columns = {
+        col: display_columns[col]
+        for col in display_columns
+        if col in df.columns
+    }
+
+    display_df = df[list(available_columns.keys())].rename(columns=display_columns)
+
+    # -----------------------------------
+    # Pagination logic
+    # -----------------------------------
+    total_pages = (len(display_df) + page_size - 1) // page_size
+
+    page_key = f"{session_key}_page"
+    table_key = f"{session_key}_dataframe"
+
+    if page_key not in st.session_state:
+        st.session_state[page_key] = 1
+
+    # Compute slice
+    start = (st.session_state[page_key] - 1) * page_size
+    end = start + page_size
+    paginated_df = display_df.iloc[start:end]
+
+    # -----------------------------------
+    # Display dataframe
+    # -----------------------------------
+    selected_rows = st.dataframe(
+        paginated_df,
+        column_config=column_configuration,
+        hide_index=True,
+        on_select="rerun",
+        selection_mode="single-row",
+        key=table_key,
+    )
+
+    # Extract selected row
+    selected_index = (
+        selected_rows["selection"]["rows"][0]
+        if selected_rows and selected_rows.get("selection", {}).get("rows")
+        else None
+    )
+
+    selected_row = (
+        paginated_df.iloc[selected_index].to_dict()
+        if selected_index is not None
+        else None
+    )
+
+    # -----------------------------------
+    # Pagination Controls
+    # -----------------------------------
+    col1, col2, col3, col4, col5 = st.columns([1, 1, 1, 1, 4])
+
+    with col1:
+        if st.button("⏪ First", use_container_width=True,
+                     disabled=st.session_state[page_key] == 1):
+            st.session_state[page_key] = 1
+            st.rerun()
+
+    with col2:
+        if st.button("← Prev", use_container_width=True,
+                     disabled=st.session_state[page_key] == 1):
+            st.session_state[page_key] -= 1
+            st.rerun()
+
+    with col3:
+        st.markdown(
+            f"<div style='text-align:center;margin-top:7px;'><strong>{st.session_state[page_key]} / {total_pages}</strong></div>",
+            unsafe_allow_html=True
+        )
+
+    with col4:
+        if st.button("Next →", use_container_width=True,
+                     disabled=st.session_state[page_key] >= total_pages):
+            st.session_state[page_key] += 1
+            st.rerun()
+
+    with col5:
+        if st.button("Last ⏩", use_container_width=True,
+                     disabled=st.session_state[page_key] >= total_pages):
+            st.session_state[page_key] = total_pages
+            st.rerun()
+
+    return paginated_df, selected_row

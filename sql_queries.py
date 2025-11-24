@@ -252,7 +252,7 @@ def get_recent_activities_query(sport_type, timerange):
             Round(act.trainingEffect,2) as trainingEffect,  
             act.trainingEffectLabel, 
             act.maxSpeed*3.6 as maxSpeed, 
-            act.averageTemperature , 
+            act.averageTemperature, 
             act.waterEstimated
         FROM activities act
         JOIN date_series ds
@@ -727,3 +727,32 @@ def get_activity_duration_by_granularity_query(start_date, end_date, granularity
     ORDER BY TimePeriod
     """
     return query
+
+def activities_stats():
+    """
+    Load activity data from SQLite.
+    If activity_type is provided → filter by activityTypeGrouped.
+    """
+
+    return f"""
+        SELECT 
+            activityId,
+            activityName,
+            locationName, 
+            trainingRace,
+            startTimeLocal,
+            DATE(startTimeLocal) AS Day,
+            Week,
+            DATE(Month) AS Month,
+            STRFTIME('%Y', startTimeLocal) AS Year,
+            distance,
+            duration,
+            averageHR,
+            averageSpeed*3.6 as averageSpeed,
+            elevationGain,
+            calories,
+            averageTemperature,
+            waterEstimated,
+            activityTypeGrouped
+        FROM activities
+     """

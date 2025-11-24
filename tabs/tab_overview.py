@@ -119,6 +119,12 @@ def show(conn):
     # Initialize session state
     if "sport" not in st.session_state:
         st.session_state.sport = "duration"
+    # --- Column 2–5: TIME RANGE BUTTONS ---
+    if "time_range_metrics" not in st.session_state:
+        st.session_state.time_range_metrics = "8_weeks"
+        st.session_state.start_date, st.session_state.end_date = ut.compute_date_range('8_weeks')
+        st.session_state.granularity = "week"
+        
     with col_btn1:
         st.session_state.sport = st.selectbox(
             "Metric",
@@ -126,12 +132,6 @@ def show(conn):
             index=sport_options.index(st.session_state.sport),
             label_visibility="collapsed"
         )
-
-    # --- Column 2–5: TIME RANGE BUTTONS ---
-    if "time_range_metrics" not in st.session_state:
-        st.session_state.time_range_metrics = "8_weeks"
-        st.session_state.start_date, st.session_state.end_date = ut.compute_date_range('8_weeks')
-        st.session_state.granularity = "week"
 
     with col_btn2:
         if st.button("📅 8 Weeks", use_container_width=True,
