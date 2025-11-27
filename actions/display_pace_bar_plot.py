@@ -2,7 +2,10 @@ import plotly.graph_objects as go
 import pandas as pd
 from actions import utils as ut
 
-def plot_pace_bar(split_file_path):
+import pandas as pd
+import numpy as np
+
+def plot_running_bar(split_file_path):
     """
     Plot Avg Moving Pace per Split as a bar chart.
     Hover shows distance (converted to meters) and pace for each split.
@@ -101,3 +104,103 @@ def plot_pace_bar(split_file_path):
     )
 
     return fig
+
+
+import pandas as pd
+import plotly.graph_objects as go
+
+def plot_swimming_bar(df):
+    # Remove last row (Summary)
+    df = df.iloc[:-1]
+    # Convert pace to seconds if not already
+    if 'Avg Pace_seconds' not in df.columns:
+        def pace_to_seconds(pace_str):
+            m, s = pace_str.split(':')
+            return int(m)*60 + int(s)
+        df['Avg Pace_seconds'] = df['Avg Pace'].apply(pace_to_seconds)
+
+    # Separate main splits
+    main_splits = df[~df['Split'].astype(str).str.contains(r'\.') & ~df['IsRest']]
+
+    # Compute X positions: left edges and centers
+    split_distances = main_splits['Distance'].tolist()
+    x_start = [0]
+    for d in split_distances[:-1]:
+        x_start.append(x_start[-1] + d)
+    x_positions = [s + d/2 for s, d in zip(x_start, split_distances)]  # bar centers
+    bar_widths = [d * 0.9 for d in split_distances]  # leave 10% gap
+    
+    fig = go.Figure()
+
+    for xpos, width, (_, row) in zip(x_positions, bar_widths, main_splits.iterrows()):
+        fig.add_trace(go.Bar(
+            x=[xpos],
+            y=[row['Avg Pace_seconds']],
+            width=width,
+            marker=dict(color='royalblue', line=dict(color='white', width=1)),
+            hovertext=f"Split: {row['Split']}<br>Distance: {row['Distance']} m<br>Avg Pace: {row['Avg Pace']}",
+            hoverinfo='text'
+        ))
+
+    # ---------------------------------------
+    # IMPROVED Y-AXIS TICKS
+    # ---------------------------------------
+    pace_values = main_splits['Avg Pace_seconds']
+    print(pace_values.min())
+    pace_min = pace_values.min()
+    pace_max = pace_values.max()
+
+    # More generous bounds to generate more ticks
+    yaxis_min = max(pace_min - 10, 0)
+    yaxis_max = pace_max + 2
+
+    # Set ~6 ticks
+    tickvals = list(range(int(yaxis_min), int(yaxis_max) + 1, 10))
+    y_ticktext = [f"{m//60:02d}:{m%60:02d}" for m in tickvals]
+
+    fig.update_layout(
+        xaxis_title='Distance',
+        yaxis_title='Avg Pace (mm:ss)',
+
+        xaxis=dict(
+            tickfont=dict(color="white"),
+            title_font=dict(color="white"),
+            zeroline=False,
+            showgrid=True,
+            gridcolor="#444444",
+            tickangle=45
+        ),
+
+        yaxis=dict(
+            
+            tickformat="%M:%S",            # <-- show pace as mm:ss automatically
+            tickfont=dict(color="white"),
+            range=[yaxis_min, yaxis_max],
+            tickvals=tickvals,
+            ticktext=y_ticktext,
+
+            title_font=dict(color="white"),
+            zeroline=False,
+            showgrid=True,
+            gridcolor="#444444"
+        ),
+
+        plot_bgcolor="#1e1e1e",           # <-- elegant dark-gray background
+        paper_bgcolor="#1e1e1e",
+
+        font=dict(
+            family='Arial, sans-serif',
+            size=16,
+            color='white'
+        ),
+        margin=dict(
+            l=80,
+            r=60,   # <-- Add space on the right
+            t=60,
+            b=10
+        ),
+        showlegend=False
+    )
+
+    return fig
+

@@ -8,8 +8,8 @@ import numpy as np
 import sql_queries as sql
 
 from actions.display_map import display_gpx_map
-from actions.parse_tcx import parse_tcx_to_dataframe
-from actions.running_pace_bar_plot import plot_pace_bar  # This may be replaced with a cycling pace plot if needed
+from actions.parse_tcx_csv import parse_tcx_to_dataframe
+from actions.display_pace_bar_plot import plot_running_bar  # This may be replaced with a cycling pace plot if needed
 import plotly.express as px
 from plotly.subplots import make_subplots
 from actions import utils as ut
@@ -60,9 +60,9 @@ def show(conn):
             with col3:
                 st.markdown(f"<div style='text-align: center; background-color: rgba(31, 119, 180, 0.2); padding: 0.5rem; border-radius: 0.25rem; border: 1px solid rgba(31, 119, 180, 0.3);'>{race_metrics_filtered['distance_avg'].item() or 0:.0f}</div>", unsafe_allow_html=True)
             with col4:
-                st.markdown(f"<div style='text-align: center; background-color: rgba(44, 160, 44, 0.2); padding: 0.5rem; border-radius: 0.25rem; border: 1px solid rgba(44, 160, 44, 0.3);'>{ut.format_duration(race_metrics_filtered['duration_total'].item())}</div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='text-align: center; background-color: rgba(44, 160, 44, 0.2); padding: 0.5rem; border-radius: 0.25rem; border: 1px solid rgba(44, 160, 44, 0.3);'>{ut.format_duration_no_days(race_metrics_filtered['duration_total'].item())}</div>", unsafe_allow_html=True)
             with col5:
-                st.markdown(f"<div style='text-align: center; background-color: rgba(44, 160, 44, 0.2); padding: 0.5rem; border-radius: 0.25rem; border: 1px solid rgba(44, 160, 44, 0.3);'>{ut.format_duration(race_metrics_filtered['duration_avg'].item())}</div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='text-align: center; background-color: rgba(44, 160, 44, 0.2); padding: 0.5rem; border-radius: 0.25rem; border: 1px solid rgba(44, 160, 44, 0.3);'>{ut.format_duration_no_days(race_metrics_filtered['duration_avg'].item())}</div>", unsafe_allow_html=True)
             with col6:
                 st.markdown(f"<div style='text-align: center; background-color: rgba(220, 20, 60, 0.2); padding: 0.5rem; border-radius: 0.25rem; border: 1px solid rgba(220, 20, 60, 0.3);'>{race_metrics_filtered['nb_trainings'].item() or 0:.0f}</div>", unsafe_allow_html=True)
             with col7:
@@ -266,7 +266,7 @@ def show(conn):
                 # st.subheader("Avg Moving Pace per Split")
                 # split_file_path = os.path.join(activity_output_dir, f"{str(selected_row_id)}.csv")
                 # if os.path.exists(split_file_path):
-                #     pace_fig = plot_pace_bar(split_file_path)
+                #     pace_fig = plot_running_bar(split_file_path)
                 #     st.plotly_chart(pace_fig, use_container_width=True)
                 # else:
                 #     st.warning(f"Split file not found")

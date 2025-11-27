@@ -235,30 +235,40 @@ def get_recent_activities_query(sport_type, timerange):
         )
         SELECT 
             act.Day,    
-            ROUND(act.distance, 2) as distance,
-            time(act.duration, 'unixepoch') as duration, 
+            act.activityTypeGrouped,
+            act.activityId,
+            ROUND(act.distance, 2) AS distance,
+            time(act.duration, 'unixepoch') AS duration, 
             act.calories, 
             act.averageHR,
-            act.elevationGain,
-            act.averageSpeed*3.6 as averageSpeed, 
-            act.averageRunCadence, 
-            act.elevationLoss, 
-            act.maxHR, 
-            act.minHR, 
-            act.startTimeLocal,
-            act.locationName, 
-            act.activityName,
-            act.activityId, 
-            Round(act.trainingEffect,2) as trainingEffect,  
+            act.maxHR,
+            act.minHR,
+            act.totalNumberOfStrokes,
+            act.averageStrokeDistance,
+            act.averageSwimCadence,
+            act.maxSwimCadence,
+            ROUND(act.averageSpeed*3.6, 2) AS averageSpeed, 
+            ROUND(act.maxSpeed*3.6, 2) AS maxSpeed, 
+            act.averageSwolf,
+            ROUND(act.trainingEffect,2) AS trainingEffect,  
             act.trainingEffectLabel, 
-            act.maxSpeed*3.6 as maxSpeed, 
-            act.averageTemperature, 
-            act.waterEstimated
+            act.moderateIntensityMinutes,
+            act.vigorousIntensityMinutes,
+            act.averageTemperature,
+            act.maxTemperature,
+            act.minTemperature,
+            act.waterEstimated,
+            act.elevationGain,
+            act.elevationLoss,
+            act.startTimeLocal,
+            act.locationName,
+            act.activityName
         FROM activities act
         JOIN date_series ds
             ON strftime('%Y-%m-%d', ds.Week) = act.Week
-         WHERE act.activityTypeGrouped = '{sport_type}'
-        ORDER BY act.Day desc;
+        WHERE act.activityTypeGrouped = '{sport_type}'
+        ORDER BY act.Day DESC;
+
       
     """
 
@@ -505,7 +515,7 @@ week_data AS (
             CAST(SUM(duration * averageHR) / SUM(duration) AS INTEGER) AS averageHR
         FROM week_data 
     """   
-    
+
 def get_volume_metrics_query(sport):
     """
     Get race metrics for a specific training period
@@ -518,89 +528,130 @@ def get_volume_metrics_query(sport):
                 COUNT(*) AS nb_trainings,
                 SUM(distance) AS distance,
                 SUM(calories) AS calories,
-                SUM(elevationGain) AS elevationGain,
+                SUM(totalNumberOfStrokes) AS totalNumberOfStrokes,
                 CAST(SUM(duration * averageHR) / SUM(duration) AS INTEGER) AS averageHR,
                 RANK() OVER (ORDER BY week DESC) AS rank_week
             FROM activities
             WHERE activityTypeGrouped = '{sport}'
-                AND date(startTimeLocal) >=   date(strftime('%Y', 'now') || '-01-01')
+            AND date(startTimeLocal) >= date(strftime('%Y','now') || '-01-01')
             GROUP BY week
+        ),
+        -- Recursive weekly date generator from Jan 1st to today
+        week_series AS (
+            WITH RECURSIVE dates AS (
+                SELECT date(strftime('%Y','now') || '-01-01', 'weekday 1') AS week_start
+                UNION ALL
+                SELECT date(week_start, '+7 days')
+                FROM dates
+                WHERE date(week_start, '+7 days') <= date('now')
+            )
+            SELECT week_start AS week
+            FROM dates
+        ),
+        -- Join week series with week_data to fill missing weeks with zero
+        full_weeks AS (
+            SELECT
+                ws.week,
+                COALESCE(wd.duration, 0) AS duration,
+                COALESCE(wd.nb_trainings, 0) AS nb_trainings,
+                COALESCE(wd.distance, 0) AS distance,
+                COALESCE(wd.calories, 0) AS calories,
+                COALESCE(wd.totalNumberOfStrokes, 0) AS totalNumberOfStrokes,
+                COALESCE(wd.averageHR, 0) AS averageHR,
+                wd.rank_week
+            FROM week_series ws
+            LEFT JOIN week_data wd ON ws.week = wd.week
+        ),
+        -- Count actual weeks per range
+        week_counts AS (
+            SELECT
+                (SELECT COUNT(*) FROM full_weeks WHERE rank_week = 1) AS cnt_last_1,
+                (SELECT COUNT(*) FROM full_weeks WHERE rank_week <= 4) AS cnt_last_4,
+                (SELECT COUNT(*) FROM full_weeks WHERE rank_week <= 12) AS cnt_last_12,
+                (SELECT COUNT(*) FROM full_weeks WHERE rank_week <= 18) AS cnt_last_18,
+                (SELECT COUNT(*) FROM full_weeks) AS cnt_last_all
         )
+        -- === Final metrics ===
+        -- Last Week
         SELECT
-            "last_1" as name, 
+            "last_1" AS name,
             SUM(duration) AS duration_total,
-            SUM(duration) AS duration_avg,
+            SUM(duration) / (SELECT cnt_last_1 FROM week_counts) AS duration_avg,
             SUM(nb_trainings) AS nb_trainings,
             SUM(distance) AS distance_total,
-            SUM(distance) AS distance_avg,
+            SUM(distance) / (SELECT cnt_last_1 FROM week_counts) AS distance_avg,
             SUM(calories) AS calories,
-            SUM(elevationGain) AS elevationGain,
-            CAST(SUM(duration * averageHR) / SUM(duration) AS INTEGER) AS averageHR
-        FROM week_data
+            SUM(totalNumberOfStrokes) AS totalNumberOfStrokes,
+            CAST(SUM(duration * averageHR) / NULLIF(SUM(duration),0) AS INTEGER) AS averageHR
+        FROM full_weeks
         WHERE rank_week = 1
 
         UNION ALL
 
+        -- Last 4 Weeks
         SELECT
-            "last_4" as name, 
+            "last_4" AS name,
             SUM(duration) AS duration_total,
-            SUM(duration) / 4 AS duration_avg,
+            SUM(duration) / (SELECT cnt_last_4 FROM week_counts) AS duration_avg,
             SUM(nb_trainings) AS nb_trainings,
             SUM(distance) AS distance_total,
-            SUM(distance) / 4 AS distance_avg,
+            SUM(distance) / (SELECT cnt_last_4 FROM week_counts) AS distance_avg,
             SUM(calories) AS calories,
-            SUM(elevationGain) AS elevationGain,
-            CAST(SUM(duration * averageHR) / SUM(duration) AS INTEGER) AS averageHR
-        FROM week_data
+            SUM(totalNumberOfStrokes) AS totalNumberOfStrokes,
+            CAST(SUM(duration * averageHR) / NULLIF(SUM(duration),0) AS INTEGER) AS averageHR
+        FROM full_weeks
         WHERE rank_week <= 4
 
-
         UNION ALL
 
+        -- Last 12 Weeks
         SELECT
-            "last_12" as name, 
+            "last_12" AS name,
             SUM(duration) AS duration_total,
-            SUM(duration) / 12 AS duration_avg,
+            SUM(duration) / (SELECT cnt_last_12 FROM week_counts) AS duration_avg,
             SUM(nb_trainings) AS nb_trainings,
             SUM(distance) AS distance_total,
-            SUM(distance) / 12 AS distance_avg,
+            SUM(distance) / (SELECT cnt_last_12 FROM week_counts) AS distance_avg,
             SUM(calories) AS calories,
-            SUM(elevationGain) AS elevationGain,
-            CAST(SUM(duration * averageHR) / SUM(duration) AS INTEGER) AS averageHR
-        FROM week_data
+            SUM(totalNumberOfStrokes) AS totalNumberOfStrokes,
+            CAST(SUM(duration * averageHR) / NULLIF(SUM(duration),0) AS INTEGER) AS averageHR
+        FROM full_weeks
         WHERE rank_week <= 12
-        
 
         UNION ALL
 
+        -- Last 18 Weeks
         SELECT
-            "last_18" as name, 
+            "last_18" AS name,
             SUM(duration) AS duration_total,
-            SUM(duration) / 18 AS duration_avg,
+            SUM(duration) / (SELECT cnt_last_18 FROM week_counts) AS duration_avg,
             SUM(nb_trainings) AS nb_trainings,
             SUM(distance) AS distance_total,
-            SUM(distance) / 18 AS distance_avg,
+            SUM(distance) / (SELECT cnt_last_18 FROM week_counts) AS distance_avg,
             SUM(calories) AS calories,
-            SUM(elevationGain) AS elevationGain,
-            CAST(SUM(duration * averageHR) / SUM(duration) AS INTEGER) AS averageHR
-        FROM week_data
-        WHERE rank_week <= 18  
+            SUM(totalNumberOfStrokes) AS totalNumberOfStrokes,
+            CAST(SUM(duration * averageHR) / NULLIF(SUM(duration),0) AS INTEGER) AS averageHR
+        FROM full_weeks
+        WHERE rank_week <= 18
 
         UNION ALL
 
+        -- Year to Date (all)
         SELECT
-            "last_all" as name, 
+            "last_all" AS name,
             SUM(duration) AS duration_total,
-            SUM(duration) / 18 AS duration_avg,
+            SUM(duration) / (SELECT cnt_last_all FROM week_counts) AS duration_avg,
             SUM(nb_trainings) AS nb_trainings,
             SUM(distance) AS distance_total,
-            SUM(distance) / 18 AS distance_avg,
+            SUM(distance) / (SELECT cnt_last_all FROM week_counts) AS distance_avg,
             SUM(calories) AS calories,
-            SUM(elevationGain) AS elevationGain,
-            CAST(SUM(duration * averageHR) / SUM(duration) AS INTEGER) AS averageHR
-        FROM week_data 
-    """   
-    
+            SUM(totalNumberOfStrokes) AS totalNumberOfStrokes,
+            CAST(SUM(duration * averageHR) / NULLIF(SUM(duration),0) AS INTEGER) AS averageHR
+        FROM full_weeks;
+
+    """
+
+   
 def get_race_metrics_query(start_date, end_date):
     """
     Get race metrics for a specific training period

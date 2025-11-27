@@ -128,3 +128,70 @@ def parse_tcx_to_dataframe(tcx_file_path):
                 if pd.notna(x) else "No Data"
     )
     return df
+
+
+def parse_swimming_csv(csv_file_path):
+    """
+    Parse a swimming CSV export into a DataFrame with useful numeric and time columns.
+    """
+    # Read CSV
+    df = pd.read_csv(csv_file_path, dtype=str)  # Read all as string to avoid mis-parsing
+
+    # Convert numeric columns
+    numeric_cols = ['Lengths','Distance','Avg SWOLF','Avg HR','Max HR','Total Strokes','Avg Strokes','Calories']
+    for col in numeric_cols:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col].replace('--', np.nan), errors='coerce')
+
+    # Parse Time column (hh:mm:ss.xxx or mm:ss.xxx)
+    def parse_time_str(t):
+        try:
+            if pd.isna(t):
+                return pd.NaT
+            parts = str(t).split(":")
+            if len(parts) == 2:
+                minutes = int(parts[0])
+                seconds = float(parts[1])
+                return pd.Timedelta(minutes=minutes, seconds=seconds)
+            elif len(parts) == 3:
+                hours = int(parts[0])
+                minutes = int(parts[1])
+                seconds = float(parts[2])
+                return pd.Timedelta(hours=hours, minutes=minutes, seconds=seconds)
+            else:
+                return pd.NaT
+        except:
+            return pd.NaT
+
+    if 'Time' in df.columns:
+        df['TimeDelta'] = df['Time'].apply(parse_time_str)
+        df['Time_seconds'] = df['TimeDelta'].dt.total_seconds()
+
+    # Parse Avg Pace and Best Pace (mm:ss)
+    def parse_pace_str(p):
+        try:
+            if pd.isna(p) or str(p).strip() == '--':
+                return np.nan
+            parts = str(p).split(":")
+            if len(parts) == 2:
+                minutes = int(parts[0])
+                seconds = int(parts[1])
+                return minutes * 60 + seconds
+            return np.nan
+        except:
+            return np.nan
+
+    for col in ['Avg Pace','Best Pace']:
+        if col in df.columns:
+            df[col + '_seconds'] = df[col].apply(parse_pace_str)
+
+    # Fill missing numeric values with 0 where appropriate
+    fill_zero_cols = ['Lengths', 'Distance', 'Total Strokes', 'Avg Strokes', 'Calories']
+    for col in fill_zero_cols:
+        if col in df.columns:
+            df[col] = df[col].fillna(0)
+
+    # Optional: create a "Rest" flag
+    df['IsRest'] = df['Split'].astype(str).str.upper().str.contains("REST")
+
+    return df

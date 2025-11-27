@@ -6,8 +6,8 @@ import pandas as pd
 import sql_queries as sql
 
 from actions.display_map import display_gpx_map
-from actions.parse_tcx import parse_tcx_to_dataframe
-from actions.running_pace_bar_plot import plot_pace_bar  # This may be replaced with a cycling pace plot if needed
+from actions.parse_tcx_csv import parse_tcx_to_dataframe
+from actions.display_pace_bar_plot import plot_running_bar  # This may be replaced with a cycling pace plot if needed
 import plotly.express as px
 from plotly.subplots import make_subplots
 from actions import utils as ut

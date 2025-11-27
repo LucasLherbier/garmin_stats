@@ -10,6 +10,15 @@ def pace_to_seconds(pace):
     h, m, s = map(int, pace.split(':'))
     return m * 60 + s
 
+def format_to_mmss(t):
+    try:
+        parts = t.split(':')
+        s = int(float(parts[-1])) + int(parts[-2])*60
+        return f"{s//60:02d}:{s%60:02d}"
+    except:
+        return "00:00"
+
+
 def format_duration(seconds):
     if seconds is None:
         return "0:00:00"
@@ -252,17 +261,10 @@ def paginated_table(
         selection_mode="single-row",
         key=table_key,
     )
-
     # Extract selected row
     selected_index = (
         selected_rows["selection"]["rows"][0]
         if selected_rows and selected_rows.get("selection", {}).get("rows")
-        else None
-    )
-
-    selected_row = (
-        paginated_df.iloc[selected_index].to_dict()
-        if selected_index is not None
         else None
     )
 
@@ -301,4 +303,4 @@ def paginated_table(
             st.session_state[page_key] = total_pages
             st.rerun()
 
-    return paginated_df, selected_row
+    return paginated_df, selected_index
