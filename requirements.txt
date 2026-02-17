@@ -3,9 +3,15 @@ pandas
 garminconnect
 garminexport
 requests
-pandas
 sqlite-utils
 plotly
 folium
 streamlit-folium
 branca
+python-dotenv
+google-cloud-storage
+google-cloud-bigquery
+pyarrow
+db-dtypes
+pandas-gbq
+google-cloud-bigquery-storage

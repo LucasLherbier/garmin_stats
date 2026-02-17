@@ -14,305 +14,139 @@ from actions.display_pace_bar_plot import plot_running_bar
 import plotly.express as px
 from plotly.subplots import make_subplots
 from actions import utils as ut
+from actions import utils_ui as ui
+from utils_gcp import check_gcs_path_exists, read_csv_from_gcs, bucket
 
 
 def show(conn):
-    st.subheader("Running Metrics")
+    st.title("🏃‍♂️ Run Analytics")
+    st.markdown("Detailed insights into my run performance and history activities")
 
     # Fetch race metrics
-    race_metrics = pd.read_sql(
-        sql.get_volume_metrics_query("running"),
-        conn
-    )
+    race_metrics = conn(sql.get_volume_metrics_query("running"))
 
     if not race_metrics.empty:
-        # Create 9 columns
-        col1, col2, col3, col4, col5, col6, col7, col8, col9 = st.columns(9)
+        st.write("### Volume Summary")
+        dict_columns = {"last_1":"Last Week", "last_4":"Last 4 Weeks", "last_12":"Last 12 Weeks", "last_18":"Last 18 Weeks", "last_all": "YTD"}
+        
+        tabs = st.tabs(list(dict_columns.values()))
+        for i, (key, title) in enumerate(dict_columns.items()):
+            with tabs[i]:
+                row = race_metrics[race_metrics['name'] == key]
+                if not row.empty:
+                    cols = st.columns(4)
+                    with cols[0]:
+                        ui.metric_card("Total Distance", f"{row['distance_total'].item() or 0:.1f} km", icon="📏")
+                    with cols[1]:
+                        ui.metric_card("Total Duration", ut.format_duration_no_days(row['duration_total'].item()), icon="⏱️")
+                    with cols[2]:
+                        ui.metric_card("Trainings", f"{row['nb_trainings'].item() or 0:.0f}", icon="🏃‍♂️")
+                    with cols[3]:
+                        ui.metric_card("Avg HR", f"{row['averageHR'].item() or 0:.0f} bpm", icon="❤️")
 
-        # En-têtes
-        with col1:
-            st.markdown("**Metric**")
-        with col2:
-            st.markdown("<div style='text-align: center;'><strong>Distance (Total)</strong></div>", unsafe_allow_html=True)
-        with col3:
-            st.markdown("<div style='text-align: center;'><strong>Distance (Avg)</strong></div>", unsafe_allow_html=True)
-        with col4:
-            st.markdown("<div style='text-align: center;'><strong>Duration (Total)</strong></div>", unsafe_allow_html=True)
-        with col5:
-            st.markdown("<div style='text-align: center;'><strong>Duration (Avg)</strong></div>", unsafe_allow_html=True)
-        with col6:
-            st.markdown("<div style='text-align: center;'><strong>Trainings</strong></div>", unsafe_allow_html=True)
-        with col7:
-            st.markdown("<div style='text-align: center;'><strong>Elevation Gain</strong></div>", unsafe_allow_html=True)
-        with col8:
-            st.markdown("<div style='text-align: center;'><strong>Calories</strong></div>", unsafe_allow_html=True)
-        with col9:
-            st.markdown("<div style='text-align: center;'><strong>Avg HR</strong></div>", unsafe_allow_html=True)
+    st.markdown("---")
 
-        # Ligne "Last Week"
-        dict_columns = {"last_1":"Last week", "last_4":"Last 4 weeks", "last_12":"Last 12 weeks", "last_18":"Last 18 weeks", "last_all": "Year to Date"}
-        for name_i, title in dict_columns.items() :
-            race_metrics_filtered = race_metrics[race_metrics['name'] == name_i]
-            col1, col2, col3, col4, col5, col6, col7, col8, col9 = st.columns(9)
-            with col1:
-                st.markdown(f"{title}")
-            with col2:
-                st.markdown(f"<div style='text-align: center; background-color: rgba(31, 119, 180, 0.2); padding: 0.5rem; border-radius: 0.25rem; border: 1px solid rgba(31, 119, 180, 0.3);'>{race_metrics_filtered['distance_total'].item() or 0:.0f}</div>", unsafe_allow_html=True)
-            with col3:
-                st.markdown(f"<div style='text-align: center; background-color: rgba(31, 119, 180, 0.2); padding: 0.5rem; border-radius: 0.25rem; border: 1px solid rgba(31, 119, 180, 0.3);'>{race_metrics_filtered['distance_avg'].item() or 0:.0f}</div>", unsafe_allow_html=True)
-            with col4:
-                st.markdown(f"<div style='text-align: center; background-color: rgba(44, 160, 44, 0.2); padding: 0.5rem; border-radius: 0.25rem; border: 1px solid rgba(44, 160, 44, 0.3);'>{ut.format_duration_no_days(race_metrics_filtered['duration_total'].item())}</div>", unsafe_allow_html=True)
-            with col5:
-                st.markdown(f"<div style='text-align: center; background-color: rgba(44, 160, 44, 0.2); padding: 0.5rem; border-radius: 0.25rem; border: 1px solid rgba(44, 160, 44, 0.3);'>{ut.format_duration_no_days(race_metrics_filtered['duration_avg'].item())}</div>", unsafe_allow_html=True)
-            with col6:
-                st.markdown(f"<div style='text-align: center; background-color: rgba(220, 20, 60, 0.2); padding: 0.5rem; border-radius: 0.25rem; border: 1px solid rgba(220, 20, 60, 0.3);'>{race_metrics_filtered['nb_trainings'].item() or 0:.0f}</div>", unsafe_allow_html=True)
-            with col7:
-                st.markdown(f"<div style='text-align: center; background-color: rgba(220, 20, 60, 0.2); padding: 0.5rem; border-radius: 0.25rem; border: 1px solid rgba(220, 20, 60, 0.3);'>{race_metrics_filtered['elevationGain'].item() or 0:.0f}</div>", unsafe_allow_html=True)
-            with col8:
-                st.markdown(f"<div style='text-align: center; background-color: rgba(220, 20, 60, 0.2); padding: 0.5rem; border-radius: 0.25rem; border: 1px solid rgba(220, 20, 60, 0.3);'>{race_metrics_filtered['calories'].item() or 0:.0f}</div>", unsafe_allow_html=True)
-            with col9:
-                st.markdown(f"<div style='text-align: center; background-color: rgba(220, 20, 60, 0.2); padding: 0.5rem; border-radius: 0.25rem; border: 1px solid rgba(220, 20, 60, 0.3);'>{race_metrics_filtered['averageHR'].item() or 0:.0f}</div>", unsafe_allow_html=True)
-
-    st.subheader("Running Distance Over Time")
-
-    # Initialisation de la session state si nécessaire
+    st.write("### Performance Trends")
     if 'time_range_metrics' not in st.session_state:
         st.session_state.time_range_metrics = "8_weeks"
 
-    # Boutons de sélection
-    col_btn1, col_btn2, col_btn3, col_btn4 = st.columns(4)
-
-    with col_btn1:
-        if st.button("📅 8 Weeks", use_container_width=True, type="primary" if st.session_state.time_range_metrics == '8_weeks' else "secondary"):
-            st.session_state.time_range_metrics = '8_weeks'
+    # Selection buttons
+    tr_cols = st.columns(4)
+    ranges = [("8 Weeks", "8_weeks"), ("6 Months", "6_months"), ("YTD", "ytd"), ("All Time", "all")]
+    for i, (label, val) in enumerate(ranges):
+        if tr_cols[i].button(label, use_container_width=True, type="primary" if st.session_state.time_range_metrics == val else "secondary"):
+            st.session_state.time_range_metrics = val
             st.rerun()
 
-    with col_btn2:
-        if st.button("📅 6 Months", use_container_width=True, type="primary" if st.session_state.time_range_metrics == '6_months' else "secondary"):
-            st.session_state.time_range_metrics = '6_months'
-            st.rerun()
-
-    with col_btn3:
-        if st.button("📅 YTD", use_container_width=True, type="primary" if st.session_state.time_range_metrics == 'ytd' else "secondary"):
-            st.session_state.time_range_metrics = 'ytd'
-            st.rerun()
-
-    with col_btn4:
-        if st.button("📅 All Time", use_container_width=True, type="primary" if st.session_state.time_range_metrics == 'all' else "secondary"):
-            st.session_state.time_range_metrics = 'all'
-            st.rerun()
-
-    # Récupération des données et affichage du graphique
-    running_data = pd.read_sql(sql.get_weekly_sport_query('running', st.session_state.time_range_metrics), conn)
+    running_data = conn(sql.get_weekly_sport_query('running', st.session_state.time_range_metrics))
 
     if not running_data.empty:
-        # Adaptation du titre selon la sélection
-        time_range_label = {
-            "8_weeks": "Latest 8 Weeks",
-            "6_months": "Last 6 Months",
-            "ytd": "Year to Date",
-            "all": "All Time"
-        }.get(st.session_state.time_range_metrics, st.session_state.time_range_metrics)
-
-        fig = px.area(
-            running_data,
-            x="Week",
-            y="total_distance",
-            title=f"Running Distance by Week ({time_range_label})",
-            markers=True
+        fig = px.area(running_data, x="Week", y="total_distance", markers=True, 
+                     color_discrete_sequence=['#3b82f6'], 
+                     template="plotly_dark")
+        fig.update_layout(
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)',
+            xaxis=dict(showgrid=False),
+            yaxis=dict(showgrid=True, gridcolor='rgba(255,255,255,0.1)')
         )
-        fig.update_traces(textposition='top center', texttemplate='%{y:.2f}')
-        st.plotly_chart(fig)
-    else:
-        st.warning(f"No data available for the selected time range: {time_range_label}")
+        st.plotly_chart(fig, use_container_width=True)
 
+    st.markdown("---")
+    st.write("### 📜 Recent Activities")
 
-    st.subheader("Recent Running Activities")
-
-
-    # Fetch activities data based on the selected time range for activities
-    running_table = pd.read_sql(sql.get_recent_activities_query('running', st.session_state.time_range_metrics), conn)
+    running_table = conn(sql.get_recent_activities_query('running', st.session_state.time_range_metrics))
 
     if not running_table.empty:
-        # Define column configurations
         column_configuration = {
-            "Day": st.column_config.TextColumn("Day", width="small"),
-            "Type": st.column_config.TextColumn("Type", width="small"),
-            "Activity ID": st.column_config.TextColumn("Activity ID", width="small"),
-            "Distance (km)": st.column_config.NumberColumn("Distance (km)", width="small"),
-            "Duration": st.column_config.TextColumn("Duration", width="small"),
-            "Calories": st.column_config.NumberColumn("Calories", width="small"),
-            "Avg HR": st.column_config.NumberColumn("Avg HR", width="small"),
-            "Elevation Gain (m)": st.column_config.NumberColumn("Elevation Gain (m)", width="small"),
-            "Avg Speed (km/h)": st.column_config.NumberColumn("Avg Speed (km/h)", width="small"),
-            "Avg Cadence": st.column_config.NumberColumn("Avg Cadence", width="small"),
-            "Elevation Loss (m)": st.column_config.NumberColumn("Elevation Loss (m)", width="small"),
-            "Training Effect": st.column_config.TextColumn("Training Effect", width="small"),
-            "Training Effect Label": st.column_config.TextColumn("Training Effect Label", width="small"),
-            "Max HR": st.column_config.NumberColumn("Max HR", width="small"),
-            "Min HR": st.column_config.NumberColumn("Min HR", width="small"),
+            "Day": st.column_config.TextColumn("Day"),
+            "distance": st.column_config.NumberColumn("Distance (km)", format="%.2f"),
+            "duration": st.column_config.TextColumn("Duration"),
+            "averageHR": st.column_config.NumberColumn("Avg HR"),
+            "averageSpeed": st.column_config.NumberColumn("Speed (km/h)", format="%.1f"),
+            "trainingEffectLabel": st.column_config.TextColumn("Effect"),
         }
-        # Rename columns for display
+        
         display_columns = {
             'Day': 'Day',
             'distance': 'Distance (km)',
             'duration': 'Duration',
-            'elevationGain': 'Elevation Gain (m)',
-            'calories': 'Calories',
             'averageHR': 'Avg HR',
             'averageSpeed': 'Avg Speed (km/h)',
-            'averageRunCadence': 'Avg Cadence',
-            'elevationLoss': 'Elevation Loss (m)',
-            'trainingEffectLabel': 'Training Effect Label',
-            'trainingEffect': 'Training Effect',
-            'maxHR': 'Max HR',
-            'minHR': 'Min HR',
-            'locationName': 'Location',
+            'trainingEffectLabel': 'Effect',
             'activityName': 'Activity Name',
-            'activityTypeGrouped': 'Type',
-            'activityId': 'Activity ID',
         }
+        
         paginated_df, selected_row = ut.paginated_table(
             df=running_table,
             display_columns=display_columns,
             column_configuration=column_configuration,
             page_size=10,
-            session_key="running"
+            session_key="running_list"
         )
-
                 
-        # Check if a row is selected
-        if selected_row and len(selected_row["selection"]["rows"]) > 0:
-            selected_row_index = selected_row["selection"]["rows"][0]
-            selected_row_data = paginated_df.iloc[selected_row_index]
-            # Vérifiez que la colonne 'Activity ID' existe dans paginated_df
-            if 'Activity ID' in paginated_df.columns:
-                selected_row_id = selected_row_data['Activity ID']
-                st.write(f"Selected Activity ID: {selected_row_id}")
-                # Create a list of metrics to display
-                metrics = [
-                    ("Distance (km)", f"{selected_row_data.get('Distance (km)', 0):.2f}"),
-                    ("Duration", selected_row_data.get('Duration', 0)),
-                    ("Avg HR", f"{selected_row_data.get('Avg HR', 0):.0f}"),
-                    ("Elevation Gain (m)", f"{selected_row_data.get('Elevation Gain (m)', 0):.0f}"),
-                    ("Calories", f"{selected_row_data.get('Calories', 0):.0f}"),
-                    ("Avg Speed (km/h)", f"{selected_row_data.get('Avg Speed (km/h)', 0):.2f}"),
-                    ("Avg Cadence", f"{selected_row_data.get('Avg Cadence', 0):.1f}"),
-                    ("Elevation Loss (m)", f"{selected_row_data.get('Elevation Loss (m)', 0):.0f}")
-                ]
+        if selected_row is not None:
+            selected_row_data = paginated_df.iloc[selected_row]
+            selected_row_id = selected_row_data.get('Activity ID') or running_table.iloc[selected_row]['activityId']
+            
+            st.markdown(f"#### 🔎 Activity Details: {selected_row_data.get('Activity Name')}")
+            
+            m_cols = st.columns(4)
+            with m_cols[0]: ui.metric_card("Distance", f"{selected_row_data.get('Distance (km)', 0):.2f} km", icon="📏")
+            with m_cols[1]: ui.metric_card("Duration", selected_row_data.get('Duration', 0), icon="⏱️")
+            with m_cols[2]: ui.metric_card("Avg HR", f"{selected_row_data.get('Avg HR', 0):.0f} bpm", icon="❤️")
+            with m_cols[3]: ui.metric_card("Avg Speed", f"{selected_row_data.get('Avg Speed (km/h)', 0):.1f} km/h", icon="⚡")
 
-                # Display metrics in 5 columns per row
-                for i in range(0, len(metrics), 4):
-                    cols = st.columns(4)
-                    for j, (name, value) in enumerate(metrics[i:i+4]):
-                        with cols[j]:
-                            st.metric(name, value)
+            # Map & Charts
+            activity_month = datetime.strptime(str(selected_row_data["Day"]), "%Y-%m-%d").strftime("%Y-%m")
+            gcs_base_path = f"data/raw/{activity_month}/{selected_row_id}"
+            
+            gpx_path = f"{gcs_base_path}/{selected_row_id}.gpx"
+            if check_gcs_path_exists(gpx_path):
+                gpx_content = bucket.blob(gpx_path).download_as_bytes()
+                display_gpx_map(gpx_content) 
 
-                # Display GPX file if exists
-                activity_month = datetime.strptime(str(selected_row_data["Day"]), "%Y-%m-%d").strftime("%Y-%m")
-                project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-                activity_output_dir = os.path.join(project_root, "data", "raw", activity_month, str(selected_row_id))
-                gpx_file_path = os.path.join(activity_output_dir, f"{str(selected_row_id)}.gpx")
-                if os.path.exists(gpx_file_path):
-                    display_gpx_map(gpx_file_path) 
-                    pass
-                else:
-                    st.error("GPX file not found.")
+            st.write("#### Pace Analysis")
+            csv_path = f"{gcs_base_path}/{selected_row_id}.csv"
+            if check_gcs_path_exists(csv_path):
+                df_csv = read_csv_from_gcs(csv_path)
+                st.plotly_chart(plot_running_bar(df_csv), use_container_width=True)
+            
+            # TCX Analysis
+            tcx_path = f"{gcs_base_path}/{selected_row_id}.tcx"
+            if check_gcs_path_exists(tcx_path):
+                tcx_content = bucket.blob(tcx_path).download_as_bytes()
+                df_tcx = parse_tcx_to_dataframe(tcx_content)
+                
+                st.write("#### Telemetry")
+                met1, met2 = st.columns(2)
+                y1 = met1.selectbox("Metric 1", ["HeartRate", "Cadence", "Watts", "Altitude"], index=0, key="y1")
+                y2 = met2.selectbox("Metric 2", ["HeartRate", "Cadence", "Watts", "Altitude"], index=3, key="y2")
 
-                st.subheader("Avg Moving Pace per Split")
-                split_file_path = os.path.join(activity_output_dir, f"{str(selected_row_id)}.csv")
-                if os.path.exists(split_file_path):
-                    pace_fig = plot_running_bar(split_file_path)
-                    st.plotly_chart(pace_fig, use_container_width=True)
-                else :
-                    st.warning(f"Split file not found")
-                                        
-                # Check for TCX file
-                tcx_file_path = os.path.join(activity_output_dir, f"{str(selected_row_id)}.tcx")
-                if os.path.exists(tcx_file_path):
-                    # Parse TCX file to DataFrame
-                    df = parse_tcx_to_dataframe(tcx_file_path)
-                    # Create some space in the app layout for better visibility
-                    st.markdown("<h2 style='text-align: center;'>Choose Metrics to Display</h2>", unsafe_allow_html=True)
-                    
-
-                    # Default Y-Axis metrics
-                    default_y1 = 'HeartRate'
-                    default_y2 = 'Altitude'
-
-                    # Create columns for selecting Y-Axis from dropdowns
-                    cols = st.columns(2)
-
-                    with cols[0]:
-                        y_axis_metric_1 = st.selectbox(
-                            "Select Y-Axis Metric 1", 
-                            ["HeartRate", "Cadence", "Watts", "Altitude"], 
-                            index=["HeartRate", "Cadence", "Watts", "Altitude"].index(default_y1)
-                        )
-
-                    with cols[1]:
-                        y_axis_metric_2 = st.selectbox(
-                            "Select Y-Axis Metric 2", 
-                            ["HeartRate", "Cadence", "Watts", "Altitude"], 
-                            index=["HeartRate", "Cadence", "Watts", "Altitude"].index(default_y2)
-                        )
-
-
-                    # Get the Y-axis data based on the selections
-                    y_data_1 = df[y_axis_metric_1]
-                    y_data_2 = df[y_axis_metric_2]
-
-                    # Create figure with secondary y-axis if needed
-                    fig = make_subplots(specs=[[{"secondary_y": True}]])
-
-                    # Function to add traces
-                    def add_trace(name, data, color, hovertemplate, secondary_y):
-                        fig.add_trace(
-                            go.Scatter(
-                                x=df["Time"],
-                                y=data,
-                                name=name,
-                                line=dict(color=color),
-                                hovertemplate=hovertemplate + "<extra></extra>",
-                            ),
-                            secondary_y=secondary_y,
-                        )
-    
-                    # Add Y-axis trace 1
-                    if y_axis_metric_1 == "HeartRate" or y_axis_metric_1 == "Watts":
-                        hover_y1 = f"{y_axis_metric_1}: %{{y:.0f}}<br>Time: %{{x}}"
-                        add_trace(y_axis_metric_1, y_data_1, "red", hover_y1, secondary_y=True)
-                    else:
-                        hover_y1 = f"{y_axis_metric_1}: %{{y:.2f}}<br>Time: %{{x}}"
-                        add_trace(y_axis_metric_1, y_data_1, "green", hover_y1, secondary_y=False)
-
-                    # Add Y-axis trace 2
-                    if y_axis_metric_2 == "HeartRate" or y_axis_metric_2 == "Watts":
-                        hover_y2 = f"{y_axis_metric_2}: %{{y:.0f}}<br>Time: %{{x}}"
-                        add_trace(y_axis_metric_2, y_data_2, "purple", hover_y2, secondary_y=True)
-                    else:
-                        hover_y2 = f"{y_axis_metric_2}: %{{y:.2f}}<br>Time: %{{x}}"
-                        add_trace(y_axis_metric_2, y_data_2, "orange", hover_y2, secondary_y=False)
-
-                    # Update layout with titles
-                    fig.update_layout(
-                        title=f"Activity Data: {y_axis_metric_1} and {y_axis_metric_2} vs Time",
-                        xaxis_title="Time",
-                        yaxis_title=f"{y_axis_metric_1}",
-                        yaxis2_title=f"{y_axis_metric_2}" if y_axis_metric_2 in ["HeartRate", "Watts"] else "",
-                        hovermode="x unified",
-                        height=600,
-                    )
-
-                    # Show the plot
-                    st.plotly_chart(fig, use_container_width=True)
-                else:
-                    st.error("TCX not found")
-            else:
-                st.error("La colonne 'Activity ID' est introuvable dans les données affichées.")
-
-
-
-
+                fig = make_subplots(specs=[[{"secondary_y": True}]])
+                fig.add_trace(go.Scatter(x=df_tcx["Time"], y=df_tcx[y1], name=y1, line=dict(color="#ef4444")), secondary_y=False)
+                fig.add_trace(go.Scatter(x=df_tcx["Time"], y=df_tcx[y2], name=y2, line=dict(color="#3b82f6")), secondary_y=True)
+                fig.update_layout(height=400, template="plotly_dark", hovermode="x unified")
+                st.plotly_chart(fig, use_container_width=True)
     else:
         st.info("No running activities found.")

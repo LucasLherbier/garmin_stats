@@ -3,9 +3,14 @@ import pandas as pd
 import xml.etree.ElementTree as ET
 import numpy as np
 
-def parse_tcx_to_dataframe(tcx_file_path):
-    tree = ET.parse(tcx_file_path)
-    root = tree.getroot()
+def parse_tcx_to_dataframe(tcx_input):
+    if isinstance(tcx_input, str) and not tcx_input.endswith('.tcx'):
+        root = ET.fromstring(tcx_input)
+    elif isinstance(tcx_input, bytes):
+        root = ET.fromstring(tcx_input)
+    else:
+        tree = ET.parse(tcx_input)
+        root = tree.getroot()
 
     ns = {
         'ns': 'http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2',
@@ -130,12 +135,16 @@ def parse_tcx_to_dataframe(tcx_file_path):
     return df
 
 
-def parse_swimming_csv(csv_file_path):
+def parse_swimming_csv(csv_input):
     """
     Parse a swimming CSV export into a DataFrame with useful numeric and time columns.
+    csv_input can be a file path (str) or a pandas DataFrame.
     """
-    # Read CSV
-    df = pd.read_csv(csv_file_path, dtype=str)  # Read all as string to avoid mis-parsing
+    # Read CSV if input is a path
+    if isinstance(csv_input, str):
+        df = pd.read_csv(csv_input, dtype=str)
+    else:
+        df = csv_input.astype(str)
 
     # Convert numeric columns
     numeric_cols = ['Lengths','Distance','Avg SWOLF','Avg HR','Max HR','Total Strokes','Avg Strokes','Calories']

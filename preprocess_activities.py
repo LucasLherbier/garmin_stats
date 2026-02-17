@@ -2,14 +2,27 @@ import os
 import pandas as pd
 from datetime import timedelta
 import logging
+from utils_gcp import bucket, upload_to_gcs, upload_to_bigquery, log_to_bigquery
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+if not logger.handlers:
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(logging.Formatter('%(message)s'))
+    logger.addHandler(console_handler)
+logger.propagate = False
+
 script_dir = os.path.dirname(os.path.abspath(__file__))
+
 
 def load_and_clean_data(df):
     """Load and clean data from a raw DataFrame."""
+    # Ensure string columns are strings to avoid .str accessor errors
+    for col in ['activityType', 'activityName', 'locationName']:
+        if col in df.columns:
+            df[col] = df[col].astype(str).replace('nan', '')
+
     numeric_cols = [
         'averageHR', 'maxHR', 'minHR', 'distance', 'calories', 'averageTemperature',
         'maxTemperature', 'minTemperature', 'waterEstimated', 'elevationGain',
@@ -64,16 +77,28 @@ def split_biking_musculation_activities_2023(df):
 
 def harmonize_zwift_activities(df):
     """Harmonize heart rate values for Zwift activities."""
-    if not all(col in df.columns for col in ['startTimeLocal', 'activityName', 'averageHR', 'maxHR']):
+    # Guard: check for required columns
+    if not all(col in df.columns for col in ['startTimeLocal', 'activityName', 'averageHR', 'maxHR', 'Day']):
         return df
-    unique_days = df['Day'].unique()
-    for day in unique_days:
-        max_avg_hr = df.loc[(df['Day'] == day) & (df['activityName'] == "Cardio Zwift"), 'averageHR'].max()
-        max_max_hr = df.loc[(df['Day'] == day) & (df['activityName'] == "Cardio Zwift"), 'maxHR'].max()
-        df.loc[(df['Day'] == day) & (df['activityName'].str.startswith('Zwift', na=False)), 'averageHR'] = max_avg_hr
-        df.loc[(df['Day'] == day) & (df['activityName'].str.startswith('Zwift', na=False)), 'maxHR'] = max_max_hr
+        
+    # User's guard: If no null HR values exist in the entire dataframe, skip merging but still filter Cardio Zwift
+    if df[['averageHR', 'maxHR']].isna().any().any():
+        unique_days = df['Day'].unique()
+        for day in unique_days:
+            # Find the HR from the watch (Cardio Zwift) for this day
+            cardio_mask = (df['Day'] == day) & (df['activityName'] == "Cardio Zwift")
+            if cardio_mask.any():
+                max_avg_hr = df.loc[cardio_mask, 'averageHR'].max()
+                max_max_hr = df.loc[cardio_mask, 'maxHR'].max()
+                
+                # Fill ONLY the Zwift activities on this day that are missing HR
+                zwift_mask = (df['Day'] == day) & (df['activityName'].str.startswith('Zwift', na=False))
+                df.loc[zwift_mask & df['averageHR'].isna(), 'averageHR'] = max_avg_hr
+                df.loc[zwift_mask & df['maxHR'].isna(), 'maxHR'] = max_max_hr
+                
     df = df.loc[df['activityName'] != "Cardio Zwift"]
     return df
+
 
 def standardize_activity_types(df):
     """Standardize activity types for better categorization."""
@@ -111,39 +136,42 @@ def standardize_activity_types(df):
 
     return df
 
+TRAINING_RACE_PERIODS = [
+    {'start': '2022-05-02', 'end': '2022-07-15', 'distance': 'Olympic', 'race': 'Magog 2022'},
+    {'start': '2022-05-02', 'end': '2022-09-09', 'distance': 'Olympic', 'race': 'Esprint Montréal 2022'},
+    {'start': '2023-01-06', 'end': '2023-07-14', 'distance': 'Olympic', 'race': 'Magog 2023'},
+    {'start': '2023-01-06', 'end': '2023-08-19', 'distance': '70.3', 'race': 'Mont Tremblant 2023'},
+    {'start': '2023-01-06', 'end': '2023-09-09', 'distance': 'Sprint', 'race': 'Esprint Montréal 2023'},
+    {'start': '2023-01-06', 'end': '2024-06-21', 'distance': 'Olympic', 'race': 'Mont Tremblant 2024'},
+    {'start': '2023-12-04', 'end': '2024-07-13', 'distance': '140.6', 'race': 'Vitoria Gasteiz 2024'},
+    {'start': '2024-12-30', 'end': '2025-09-06', 'distance': '70.3', 'race': 'Santa Cruz 2025'},
+    {'start': '2024-12-30', 'end': '2025-09-20', 'distance': '70.3', 'race': 'Cervia 2025'}, 
+    {'start': '2025-12-29', 'end': '2026-03-28', 'distance': '70.3', 'race': 'Oceanside 2026'}, 
+]
+
+OFF_SEASON_FALSE_PERIODS = [
+    {'start': '2022-05-02', 'end': '2022-09-10'},
+    {'start': '2023-01-06', 'end': '2023-09-10'},
+    {'start': '2023-12-04', 'end': '2024-07-14'},
+    {'start': '2024-12-30', 'end': '2025-09-21'}, 
+    {'start': '2025-12-29', 'end': '2026-03-29'},
+]
+
 def assign_periods(row):
     """Assign training periods and off-season status."""
-    training_race_periods = [
-        {'start': '2022-05-02', 'end': '2022-07-15', 'distance': 'Olympic', 'race': 'Magog 2022'},
-        {'start': '2022-05-02', 'end': '2022-09-09', 'distance': 'Olympic', 'race': 'Esprint Montréal 2022'},
-        {'start': '2023-01-06', 'end': '2023-07-14', 'distance': 'Olympic', 'race': 'Magog 2023'},
-        {'start': '2023-01-06', 'end': '2023-08-19', 'distance': '70.3', 'race': 'Mont Tremblant 2023'},
-        {'start': '2023-01-06', 'end': '2023-09-09', 'distance': 'Sprint', 'race': 'Esprint Montréal 2023'},
-        {'start': '2023-01-06', 'end': '2024-06-21', 'distance': 'Olympic', 'race': 'Mont Tremblant 2024'},
-        {'start': '2023-12-04', 'end': '2024-07-13', 'distance': '140.6', 'race': 'Vitoria Gasteiz 2024'},
-        {'start': '2024-12-30', 'end': '2025-09-06', 'distance': '70.3', 'race': 'Santa Cruz 2025'},
-        {'start': '2024-12-30', 'end': '2025-09-20', 'distance': '70.3', 'race': 'Cervia 2025'}
-    ]
-    off_season_false_periods = [
-        {'start': '2022-05-02', 'end': '2022-09-10'},
-        {'start': '2023-01-06', 'end': '2023-09-10'},
-        {'start': '2023-12-04', 'end': '2024-07-14'},
-        {'start': '2024-12-30', 'end': '2025-09-21'}
-    ]
     date = row['startTimeLocal']
     races = []
     off_season = True
-    for period in training_race_periods:
+    for period in TRAINING_RACE_PERIODS:
         if pd.to_datetime(period['start']) <= date <= pd.to_datetime(period['end']):
             races.append(period['race'])
-    for period in off_season_false_periods:
+    for period in OFF_SEASON_FALSE_PERIODS:
         if pd.to_datetime(period['start']) <= date <= pd.to_datetime(period['end']):
             off_season = False
     return pd.Series({'trainingRace': races, 'offSeason': off_season})
 
-def save_processed_data(conn, df, last_week_date):
-    """Save processed data to a CSV file and database."""
-    os.makedirs("data/processed", exist_ok=True)
+def save_processed_data(df, last_week_date):
+    """Save processed data to GCS and BigQuery."""
     output_columns = [
         'activityId', 'activityName', 'activityType', 'activityTypeGrouped',
         'startTimeLocal', 'Day', 'Week', 'Month', 'duration', 'durationFormatted',
@@ -153,53 +181,39 @@ def save_processed_data(conn, df, last_week_date):
         'averageRunCadence', 'maxRunCadence', 'totalNumberOfStrokes', 'averageStrokeDistance',
         'averageSwolf', 'averageSwimCadence', 'maxSwimCadence', 'trainingEffect',
         'trainingEffectLabel', 'moderateIntensityMinutes', 'vigorousIntensityMinutes',
-        'steps', 'locationName', 'differenceBodyBattery', 'trainingRace', 'offSeason'
+        'steps', 'locationName', 'differenceBodyBattery', 'trainingRace', 'offSeason',
+        'processed_at'
     ]
+    
+    # 1. Prepare the data (Ensure all columns exist)
     for col in output_columns:
         if col not in df.columns:
             df[col] = None
-    # Create an explicit copy of the DataFrame with the selected columns
-    new_df = df[output_columns].copy()
     
-    # Save the CSV with list format for trainingRace
-    output_file = os.path.join(script_dir, f"data/processed/activities_processed_{last_week_date}.csv")
-    new_df.to_csv(output_file, decimal='.', sep=',', index=True)
-    
-    # Create another DataFrame for SQL storage with joined string format for trainingRace
-    sql_df = new_df.copy()
-    sql_df.loc[:, 'trainingRace'] = sql_df['trainingRace'].apply(lambda x: ', '.join(x) if isinstance(x, list) else '')
-    
-    # Save to SQL database
-    if conn is not None:
-        # Check if the activities table exists
-        table_exists = pd.read_sql("SELECT name FROM sqlite_master WHERE type='table' AND name='activities'", conn).shape[0] > 0
-        
-        if table_exists:
-            # Check for existing activities to avoid duplicates
-            existing_ids = pd.read_sql("SELECT activityId FROM activities", conn)["activityId"].tolist()
-            
-            # Filter out activities that already exist in the database
-            new_activities = sql_df[~sql_df['activityId'].isin(existing_ids)]
-            
-            if not new_activities.empty:
-                new_activities.to_sql("activities", conn, if_exists="append", index=False)
-                print(f"\nAdded {len(new_activities)} new activities to the database.")
-            else:
-                print("\nNo new activities to add to the database.")
-        else:
-            # Create the table if it doesn't exist
-            sql_df.to_sql("activities", conn, if_exists="replace", index=False)
-            print(f"\nCreated activities table with {len(sql_df)} initial records.")
-            
-    print(f"Processed data saved to CSV.")
-    return new_df
+    # Format lists as strings for database compatibility (BQ)
+    final_df = df[output_columns].copy()
+    final_df['processed_at'] = pd.Timestamp.now()
+    final_df['trainingRace'] = final_df['trainingRace'].apply(lambda x: ', '.join(x) if isinstance(x, list) else '')
 
-def main_preprocess(conn, last_week_date, df_weekly_raw):
+
+    # 2. Save to GCS (Backup)
+    month_str = pd.to_datetime(last_week_date).strftime("%Y-%m")
+    gcs_path = f"data/processed/{month_str}/{last_week_date}_activities_processed_.csv"
+    upload_to_gcs(final_df, gcs_path, f"{last_week_date}_processed")
+    
+    # 3. Save to BigQuery (GCP Database with Deduplication)
+    success_bq = upload_to_bigquery(final_df, "activities")
+        
+    return final_df
+
+
+
+def main_preprocess(last_week_date, df_weekly_raw):
     """Main preprocessing function."""
     df = load_and_clean_data(df_weekly_raw)
     df = split_biking_musculation_activities_2023(df)
     df = harmonize_zwift_activities(df)
     df = standardize_activity_types(df)
     df[['trainingRace', 'offSeason']] = df.apply(assign_periods, axis=1)
-    processed_file = save_processed_data(conn, df, last_week_date)
-    return processed_file
+    processed_df = save_processed_data(df, last_week_date)
+    return processed_df

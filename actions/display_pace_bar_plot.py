@@ -5,13 +5,16 @@ from actions import utils as ut
 import pandas as pd
 import numpy as np
 
-def plot_running_bar(split_file_path):
+def plot_running_bar(split_input):
     """
     Plot Avg Moving Pace per Split as a bar chart.
     Hover shows distance (converted to meters) and pace for each split.
     """
     # Convert pace to seconds for plotting
-    df = pd.read_csv(split_file_path, delimiter=',')  # Use the correct delimiter
+    if isinstance(split_input, str):
+        df = pd.read_csv(split_input, delimiter=',')
+    else:
+        df = split_input.copy()
     df = df.iloc[:-1]  # Remove last row if it contains unwanted data
     df['Avg Moving Paces (s)'] = df['Avg Moving Paces'].apply(ut.pace_to_seconds)
 
@@ -115,11 +118,22 @@ def plot_swimming_bar(df):
     # Convert pace to seconds if not already
     if 'Avg Pace_seconds' not in df.columns:
         def pace_to_seconds(pace_str):
-            m, s = pace_str.split(':')
-            return int(m)*60 + int(s)
+            try:
+                if not pace_str or ":" not in str(pace_str):
+                    return 0
+                parts = str(pace_str).split(':')
+                if len(parts) == 2:
+                    m, s = parts
+                    return int(float(m))*60 + int(float(s))
+                return 0
+            except (ValueError, TypeError):
+                return 0
         df['Avg Pace_seconds'] = df['Avg Pace'].apply(pace_to_seconds)
 
     # Separate main splits
+    if 'IsRest' not in df.columns:
+        df['IsRest'] = df['Split'].astype(str).str.upper().str.contains("REST")
+        
     main_splits = df[~df['Split'].astype(str).str.contains(r'\.') & ~df['IsRest']]
 
     # Compute X positions: left edges and centers

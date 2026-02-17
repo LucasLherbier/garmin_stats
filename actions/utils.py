@@ -47,12 +47,23 @@ def format_duration_no_days(seconds):
     return f"{hours:02}:{minutes:02}:{sec:02}"
 
 def plot_week_volume(activity_duration_data, granularity):
-    # Format durations for display
-    activity_duration_data["FormattedDuration"] = activity_duration_data["Duration"].apply(format_duration_no_days)
-
     if activity_duration_data.empty:
         st.warning("No activity data to plot.")
         return
+
+    # Format durations for display
+    activity_duration_data["FormattedDuration"] = activity_duration_data["Duration"].apply(format_duration_no_days)
+
+    # Custom color map for sports to match dashboard theme
+    sport_colors = {
+        "running": "#3b82f6",  # Blue
+        "cycling": "#10b981",  # Green
+        "swimming": "#06b6d4", # Cyan
+        "walking": "#f59e0b",  # Amber
+        "hiking": "#8b5cf6",   # Violet
+        "strength_training": "#ec4899", # Pink
+        "other": "#94a3b8"     # Slate
+    }
 
     # ----- TOTALS -----
     totals = (
@@ -62,67 +73,82 @@ def plot_week_volume(activity_duration_data, granularity):
         .rename(columns={"Duration": "TotalDuration"})
     )
     totals["FormattedTotal"] = totals["TotalDuration"].apply(format_duration_no_days)
-    total_map = dict(zip(totals["TimePeriod"], totals["FormattedTotal"]))
-
-    # Calculate dynamic font size based on number of bars
-    num_bars = len(totals["TimePeriod"])
-    max_font = 18
-    min_font = 8
-    dynamic_font_size = max(min_font, min(max_font, int(110 / num_bars)))
-
-    # ----- STACKED BAR -----
+    
+    # ----- BAR CHART -----
     fig = px.bar(
         activity_duration_data,
         x="TimePeriod",
         y="Duration",
         color="activityTypeGrouped",
-        title=f"Activity Duration by {granularity}",
-        labels={
-            "TimePeriod": "Time Period",
-            "Duration": "Duration",
-            "activityTypeGrouped": "Sport"
-        }
+        color_discrete_map=sport_colors,
+        template="plotly_dark"
     )
 
-    # Remove bar text, keep hover only
-    for trace in fig.data:
-        trace.text = None
-        trace.customdata = activity_duration_data["FormattedDuration"]
-
-    # ----- ADD TOTAL LABELS AT BOTTOM -----
-    fig.add_scatter(
-        x=totals["TimePeriod"],
-        y=[totals["TotalDuration"].max() * 0.03] * len(totals),
-        text=[f"<b>{t}</b>" for t in totals["FormattedTotal"]],
-        mode="text",
-        textfont=dict(color="black", size=dynamic_font_size),
-        showlegend=False
+    # Modern bar styling
+    fig.update_traces(
+        marker_line_width=0,
+        opacity=0.9,
+        hovertemplate="<b>%{x}</b><br>%{fullData.name}: %{customdata}<extra></extra>",
+        customdata=activity_duration_data["FormattedDuration"]
     )
 
-    for trace in fig.data:
-        customdata_safe = trace.customdata if trace.customdata is not None else [""] * len(trace.x)
-        # Create hover info combining total + segment duration
-        hover_texts = [
-            f"<b>Total: {total_map.get(x, '')}</b><br>{trace.name}: {cd}"
-            for x, cd in zip(trace.x, customdata_safe)
-        ]
-        # Assign to customdata instead of text
-        trace.customdata = hover_texts
-        trace.hovertemplate = "%{customdata}<extra></extra>"
+    # Layout enhancements
+    fig.update_layout(
+        title=dict(
+            text=f"Training Volume by {granularity.capitalize()}",
+            font=dict(size=20, family="Outfit")
+        ),
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
+        margin=dict(t=60, b=40, l=60, r=20),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1,
+            title=None,
+            bgcolor='rgba(0,0,0,0)'
+        ),
+        xaxis=dict(
+            title=None,
+            showgrid=False,
+            tickfont=dict(color="#94a3b8")
+        ),
+        yaxis=dict(
+            title="Duration",
+            showgrid=True,
+            gridcolor='rgba(255,255,255,0.05)',
+            tickfont=dict(color="#94a3b8")
+        ),
+        bargap=0.15
+    )
 
-    # ----- Y-AXIS -----
-    max_duration = int(totals["TotalDuration"].max() * 1.2)
-    tickvals = list(range(0, max_duration + 1, 4 * 3600))
+    # Y-AXIS Ticks (HH:MM:SS)
+    max_duration = int(totals["TotalDuration"].max() * 1.1)
+    # Ensure at least 4 ticks
+    step = max(3600, (max_duration // 4) // 3600 * 3600) 
+    tickvals = list(range(0, max_duration + 1, step if step > 0 else 3600))
     ticktext = [format_duration_no_days(v) for v in tickvals]
 
     fig.update_yaxes(
         tickvals=tickvals,
         ticktext=ticktext,
-        range=[0, max_duration],
-        title="Duration (hh:mm:ss)"
+        range=[0, max_duration]
     )
 
-    st.plotly_chart(fig, key=f"activity_duration_chart_{uuid.uuid4()}")
+    # Add total labels above bars
+    fig.add_scatter(
+        x=totals["TimePeriod"],
+        y=totals["TotalDuration"] + (max_duration * 0.02),
+        text=totals["FormattedTotal"],
+        mode="text",
+        textfont=dict(color="#f8fafc", size=11, family="Inter"),
+        showlegend=False,
+        hoverinfo='skip'
+    )
+
+    st.plotly_chart(fig, width='stretch', key=f"volume_chart_{uuid.uuid4()}")
 
 def plot_week_area(running_data, y_column, y_title, sport_name, time_range_key):
     """
@@ -162,7 +188,7 @@ def plot_week_area(running_data, y_column, y_title, sport_name, time_range_key):
     fig.update_traces(textposition='top center')
 
     # Render in Streamlit
-    st.plotly_chart(fig)
+    st.plotly_chart(fig, width='stretch')
     
     
     
@@ -274,13 +300,13 @@ def paginated_table(
     col1, col2, col3, col4, col5 = st.columns([1, 1, 1, 1, 4])
 
     with col1:
-        if st.button("⏪ First", use_container_width=True,
+        if st.button("⏪ First", width='stretch',
                      disabled=st.session_state[page_key] == 1):
             st.session_state[page_key] = 1
             st.rerun()
 
     with col2:
-        if st.button("← Prev", use_container_width=True,
+        if st.button("← Prev", width='stretch',
                      disabled=st.session_state[page_key] == 1):
             st.session_state[page_key] -= 1
             st.rerun()
@@ -292,13 +318,13 @@ def paginated_table(
         )
 
     with col4:
-        if st.button("Next →", use_container_width=True,
+        if st.button("Next →", width='stretch',
                      disabled=st.session_state[page_key] >= total_pages):
             st.session_state[page_key] += 1
             st.rerun()
 
     with col5:
-        if st.button("Last ⏩", use_container_width=True,
+        if st.button("Last ⏩", width='stretch',
                      disabled=st.session_state[page_key] >= total_pages):
             st.session_state[page_key] = total_pages
             st.rerun()

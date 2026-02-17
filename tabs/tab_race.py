@@ -5,193 +5,126 @@ import sql_queries as sql
 import plotly.express as px
 import uuid
 from actions import utils as ut
-
-def format_duration(seconds):
-    if seconds is None:
-        return "0:00:00"
-    return str(timedelta(seconds=int(seconds))).split(".")[0]
+from actions import utils_ui as ui
+from preprocess_activities import TRAINING_RACE_PERIODS
 
 def show(conn):
-    st.subheader("🏁 Race Metrics")
+    st.title("🎯 Race Preparation")
+    st.markdown("Monitor my training volume and intensity leading up to my goal races.")
 
-    # Define races with their periods
-    races = [
-        {'start': '2022-05-02', 'end': '2022-07-15', 'distance': 'Olympic', 'race': 'Magog 2022'},
-        {'start': '2022-05-02', 'end': '2022-09-09', 'distance': 'Olympic', 'race': 'Esprint Montréal 2022'},
-        {'start': '2023-01-06', 'end': '2023-07-14', 'distance': 'Olympic', 'race': 'Magog 2023'},
-        {'start': '2023-01-06', 'end': '2023-08-19', 'distance': '70.3', 'race': 'Mont Tremblant 2023'},
-        {'start': '2023-01-06', 'end': '2023-09-09', 'distance': 'Sprint', 'race': 'Esprint Montréal 2023'},
-        {'start': '2023-01-06', 'end': '2024-06-21', 'distance': 'Olympic', 'race': 'Mont Tremblant 2024'},
-        {'start': '2023-12-04', 'end': '2024-07-13', 'distance': '140.6', 'race': 'Vitoria Gasteiz 2024'},
-        {'start': '2024-12-30', 'end': '2025-09-06', 'distance': '70.3', 'race': 'Santa Cruz 2025'},
-        {'start': '2024-12-30', 'end': '2025-09-20', 'distance': '70.3', 'race': 'Cervia 2025'}
-    ]
+    # Use centralized races definition
+    races = TRAINING_RACE_PERIODS[::-1]
 
     # Race Selection
     race_options = [f"{race['race']} ({race['distance']})" for race in races]
-    selected_race_display = st.selectbox("Select Race", race_options)
+    selected_race_display = st.selectbox("Select Target Race", race_options)
     
     # Find the selected race data
     selected_race_index = race_options.index(selected_race_display)
     selected_race_data = races[selected_race_index]
 
-    # Distance Metrics Table
-    st.subheader("📊 Distance Metrics (km)")
-
     # Fetch race metrics
-    race_metrics = pd.read_sql(
-        sql.get_race_metrics_query(selected_race_data['start'], selected_race_data['end']),
-        conn
-    )
+    race_metrics = conn(sql.get_race_metrics_query(selected_race_data['start'], selected_race_data['end']))
 
     if not race_metrics.empty:
+        st.write("### Preparation Summary")
+        
+        m_cols = st.columns(4)
+        with m_cols[0]: ui.metric_card("Avg Weekly Duration", ut.format_duration(race_metrics['average_duration_per_week'].iloc[0]), icon="⏱️")
+        with m_cols[1]: ui.metric_card("Total Swim", f"{race_metrics['total_distance_swim'].iloc[0] or 0:.0f} km", icon="🏊‍♂️")
+        with m_cols[2]: ui.metric_card("Total Bike", f"{race_metrics['total_distance_bike'].iloc[0] or 0:.0f} km", icon="🚴‍♂️")
+        with m_cols[3]: ui.metric_card("Total Run", f"{race_metrics['total_distance_run'].iloc[0] or 0:.0f} km", icon="🏃‍♂️")
+
+        st.markdown("---")
+        st.write("### Detailed Volume Breakdown")
+        
+        # Comparison metrics
+        comp_cols = st.columns(3)
+        with comp_cols[0]:
+            ui.metric_card("Swim Weekly Avg", f"{race_metrics['average_week_distance_swim'].iloc[0] or 0:.1f} km", icon="🌊")
+        with comp_cols[1]:
+            ui.metric_card("Bike Weekly Avg", f"{race_metrics['average_week_distance_bike'].iloc[0] or 0:.1f} km", icon="🛣️")
+        with comp_cols[2]:
+            ui.metric_card("Run Weekly Avg", f"{race_metrics['average_week_distance_run'].iloc[0] or 0:.1f} km", icon="🏁")
+
+        st.markdown("---")
+        
+        # Distance Metrics Table (Restored version)
+        st.subheader("📊 Historical Prep Benchmarks")
+
         # Header row
         col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.markdown("**Metric**")
-        with col2:
-            st.markdown("<div style='text-align: center;'><strong>🏊‍♂️ Swimming</strong></div>", unsafe_allow_html=True)
-        with col3:
-            st.markdown("<div style='text-align: center;'><strong>🚴‍♂️ Cycling</strong></div>", unsafe_allow_html=True)
-        with col4:
-            st.markdown("<div style='text-align: center;'><strong>🏃‍♂️ Running</strong></div>", unsafe_allow_html=True)
+        with col1: st.markdown("**Timeframe**")
+        with col2: st.markdown("<div style='text-align: center;'><strong>🏊‍♂️ Swim</strong></div>", unsafe_allow_html=True)
+        with col3: st.markdown("<div style='text-align: center;'><strong>🚴‍♂️ Bike</strong></div>", unsafe_allow_html=True)
+        with col4: st.markdown("<div style='text-align: center;'><strong>🏃‍♂️ Run</strong></div>", unsafe_allow_html=True)
 
-        # Total row
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.markdown("**Total**")
-        with col2:
-            st.markdown(f"<div style='text-align: center; background-color: rgba(31, 119, 180, 0.2); padding: 0.5rem; border-radius: 0.25rem; border: 1px solid rgba(31, 119, 180, 0.3);'>{race_metrics['total_distance_swim'].iloc[0] or 0:.0f}</div>", unsafe_allow_html=True)
-        with col3:
-            st.markdown(f"<div style='text-align: center; background-color: rgba(255, 127, 14, 0.2); padding: 0.5rem; border-radius: 0.25rem; border: 1px solid rgba(255, 127, 14, 0.3);'>{race_metrics['total_distance_bike'].iloc[0] or 0:.0f}</div>", unsafe_allow_html=True)
-        with col4:
-            st.markdown(f"<div style='text-align: center; background-color: rgba(44, 160, 44, 0.2); padding: 0.5rem; border-radius: 0.25rem; border: 1px solid rgba(44, 160, 44, 0.3);'>{race_metrics['total_distance_run'].iloc[0] or 0:.0f}</div>", unsafe_allow_html=True)
+        rows = [
+            ("Avg Weekly", "average_week_distance_swim", "average_week_distance_bike", "average_week_distance_run", "{:.1f}"),
+            ("Avg (8W)", "average_8week_distance_swim", "average_8week_distance_bike", "average_8week_distance_run", "{:.1f}"),
+            ("Avg Monthly", "average_month_distance_swim", "average_month_distance_bike", "average_month_distance_run", "{:.0f}")
+        ]
 
-        # Average Weekly row
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.markdown("**Avg Weekly**")
-        with col2:
-            st.markdown(f"<div style='text-align: center; background-color: rgba(31, 119, 180, 0.2); padding: 0.5rem; border-radius: 0.25rem; border: 1px solid rgba(31, 119, 180, 0.3);'>{race_metrics['average_week_distance_swim'].iloc[0] or 0:.0f}</div>", unsafe_allow_html=True)
-        with col3:
-            st.markdown(f"<div style='text-align: center; background-color: rgba(255, 127, 14, 0.2); padding: 0.5rem; border-radius: 0.25rem; border: 1px solid rgba(255, 127, 14, 0.3);'>{race_metrics['average_week_distance_bike'].iloc[0] or 0:.0f}</div>", unsafe_allow_html=True)
-        with col4:
-            st.markdown(f"<div style='text-align: center; background-color: rgba(44, 160, 44, 0.2); padding: 0.5rem; border-radius: 0.25rem; border: 1px solid rgba(44, 160, 44, 0.3);'>{race_metrics['average_week_distance_run'].iloc[0] or 0:.0f}</div>", unsafe_allow_html=True)
+        # Colors for each sport (transparent backgrounds)
+        colors = ["rgba(56, 189, 248, 0.15)", "rgba(16, 185, 129, 0.15)", "rgba(59, 130, 246, 0.15)"]
 
-        # Average Last 8 Weeks row
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.markdown("**Avg (8W)**")
-        with col2:
-            st.markdown(f"<div style='text-align: center; background-color: rgba(31, 119, 180, 0.2); padding: 0.5rem; border-radius: 0.25rem; border: 1px solid rgba(31, 119, 180, 0.3);'>{race_metrics['average_8week_distance_swim'].iloc[0] or 0:.0f}</div>", unsafe_allow_html=True)
-        with col3:
-            st.markdown(f"<div style='text-align: center; background-color: rgba(255, 127, 14, 0.2); padding: 0.5rem; border-radius: 0.25rem; border: 1px solid rgba(255, 127, 14, 0.3);'>{race_metrics['average_8week_distance_bike'].iloc[0] or 0:.0f}</div>", unsafe_allow_html=True)
-        with col4:
-            st.markdown(f"<div style='text-align: center; background-color: rgba(44, 160, 44, 0.2); padding: 0.5rem; border-radius: 0.25rem; border: 1px solid rgba(44, 160, 44, 0.3);'>{race_metrics['average_8week_distance_run'].iloc[0] or 0:.0f}</div>", unsafe_allow_html=True)
+        for label, swim_col, bike_col, run_col, fmt in rows:
+            col1, col2, col3, col4 = st.columns(4)
+            with col1: st.markdown(f"**{label}**")
+            
+            vals = [race_metrics[swim_col].iloc[0], race_metrics[bike_col].iloc[0], race_metrics[run_col].iloc[0]]
+            cols = [col2, col3, col4]
+            
+            for c, val, color in zip(cols, vals, colors):
+                with c:
+                    st.markdown(f"<div style='text-align: center; background-color: {color}; padding: 0.5rem; border-radius: 0.5rem; border: 1px solid rgba(255,255,255,0.1);'>{fmt.format(val or 0)}</div>", unsafe_allow_html=True)
 
-        # Average Monthly row
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.markdown("**Avg Monthly**")
-        with col2:
-            st.markdown(f"<div style='text-align: center; background-color: rgba(31, 119, 180, 0.2); padding: 0.5rem; border-radius: 0.25rem; border: 1px solid rgba(31, 119, 180, 0.3);'>{race_metrics['average_month_distance_swim'].iloc[0] or 0:.0f}</div>", unsafe_allow_html=True)
-        with col3:
-            st.markdown(f"<div style='text-align: center; background-color: rgba(255, 127, 14, 0.2); padding: 0.5rem; border-radius: 0.25rem; border: 1px solid rgba(255, 127, 14, 0.3);'>{race_metrics['average_month_distance_bike'].iloc[0] or 0:.0f}</div>", unsafe_allow_html=True)
-        with col4:
-            st.markdown(f"<div style='text-align: center; background-color: rgba(44, 160, 44, 0.2); padding: 0.5rem; border-radius: 0.25rem; border: 1px solid rgba(44, 160, 44, 0.3);'>{race_metrics['average_month_distance_run'].iloc[0] or 0:.0f}</div>", unsafe_allow_html=True)
+        st.markdown("---")
 
-        # Duration metrics - centered
-        st.subheader("⏱️ Duration Metrics")
-        col_spacer5, col4, col_spacer6, col5, col_spacer7 = st.columns([2, 3, 1, 3, 2])
-        
-        with col4:
-            st.metric("Avg Duration per Week", format_duration(race_metrics['average_duration_per_week'].iloc[0]))
-        with col5:
-            st.metric("Avg Duration (Last 8 Weeks)", format_duration(race_metrics['average_duration_last_8_weeks'].iloc[0]))
-
-        # Granularity selection with buttons
+        # Granularity selection
         st.subheader("📈 Distance Over Time")
         
-        # Initialize session state if not exists
         if 'granularity' not in st.session_state:
             st.session_state.granularity = 'week'
         
-        # Create button columns for better spacing
-        col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 4])
-        
-        with col_btn1:
-            if st.button("📅 Week", use_container_width=True, type="primary" if st.session_state.granularity == 'week' else "secondary"):
-                st.session_state.granularity = 'week'
-                st.rerun()
-        
-        with col_btn2:
-            if st.button("📆 Month", use_container_width=True, type="primary" if st.session_state.granularity == 'month' else "secondary"):
-                st.session_state.granularity = 'month'
-                st.rerun()
+        g_cols = st.columns(4)
+        if g_cols[0].button("📅 Week", use_container_width=True, type="primary" if st.session_state.granularity == 'week' else "secondary"):
+            st.session_state.granularity = 'week'
+            st.rerun()
+        if g_cols[1].button("📆 Month", use_container_width=True, type="primary" if st.session_state.granularity == 'month' else "secondary"):
+            st.session_state.granularity = 'month'
+            st.rerun()
 
         granularity = st.session_state.granularity
 
-        # Display current selection
-        st.info(f"Currently showing: **{granularity}ly** view")
-
-        # Graphs for each sport
         sports = [
-            {'name': 'swimming', 'display': 'Swimming', 'emoji': '🏊‍♂️', 'color': '#1f77b4'},
-            {'name': 'cycling', 'display': 'Cycling', 'emoji': '🚴‍♂️', 'color': '#ff7f0e'}, 
-            {'name': 'running', 'display': 'Running', 'emoji': '🏃‍♂️', 'color': '#2ca02c'}
+            {'name': 'swimming', 'display': 'Swim', 'emoji': '🏊‍♂️', 'color': '#38bdf8'},
+            {'name': 'cycling', 'display': 'Bike', 'emoji': '🚴‍♂️', 'color': '#10b981'}, 
+            {'name': 'running', 'display': 'Run', 'emoji': '🏃‍♂️', 'color': '#3b82f6'}
         ]
         
         for sport in sports:
-            st.subheader(f"{sport['emoji']} {sport['display']} Distance Over Time")
-            sport_data = pd.read_sql(
-                sql.get_race_distance_by_timerange_query(
-                    selected_race_data['start'], 
-                    selected_race_data['end'], 
-                    granularity, 
-                    sport['name']
-                ),
-                conn
-            )
+            sport_data = conn(sql.get_race_distance_by_timerange_query(
+                selected_race_data['start'], selected_race_data['end'], granularity, sport['name']
+            ))
             if not sport_data.empty:
-                fig = px.area(
-                    sport_data,
-                    x="time_period",
-                    y="total_distance",
-                    title=f"{sport['emoji']} {sport['display']} Distance by {granularity} - {selected_race_data['race']}",
-                    markers=True,
-                    color_discrete_sequence=[sport['color']]
-                )
-                fig.update_traces(textposition='top center', texttemplate='%{y:.0f}')
+                fig = px.area(sport_data, x="time_period", y="total_distance", markers=True, 
+                             color_discrete_sequence=[sport['color']], template="plotly_dark")
                 fig.update_layout(
-                    xaxis_title=granularity,
-                    yaxis_title="Distance (km)"
+                    title=f"{sport['emoji']} {sport['display']} Volume",
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    yaxis_title="Distance (km)",
+                    xaxis_title=granularity.capitalize()
                 )
-                st.plotly_chart(fig, use_container_width=True, key=f"{sport['name']}_distance_chart_{uuid.uuid4()}")
-            else:
-                st.warning(f"No {sport['display'].lower()} data available for the selected race period.")
+                st.plotly_chart(fig, width='stretch')
 
-
+        st.markdown("---")
+        st.write("### ⏱️ Total Training Load")
+        activity_duration_data = conn(sql.get_activity_duration_by_granularity_query(
+            selected_race_data['start'], selected_race_data['end'], st.session_state.granularity
+        ))
+        if not activity_duration_data.empty:
+            ut.plot_week_volume(activity_duration_data, st.session_state.granularity)
     else:
-        st.warning("No data available for the selected race period.")
-
-
-    # Fetch activity duration data based on the selected granularity and race dates
-   
-
-    activity_duration_data = pd.read_sql(
-            sql.get_activity_duration_by_granularity_query(
-                selected_race_data['start'], 
-                selected_race_data['end'], 
-                st.session_state.granularity
-            ),
-            conn
-        )
-    if not activity_duration_data.empty:
-        ut.plot_week_volume(
-            activity_duration_data,
-            st.session_state.granularity
-        )
-        
-    # Use a unique key for the plotly chart
-    else:
-        st.warning(f"No activity duration data available for the selected granularity: {st.session_state.granularity}")
+        st.warning("No preparation data available for this race period.")

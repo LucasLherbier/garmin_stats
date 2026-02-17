@@ -1,10 +1,12 @@
 import streamlit as st
 import pandas as pd
-import sqlite3
 from datetime import timedelta
 import sql_queries as sql
+from utils_gcp import query_bigquery
+import os
+import sys
 
-import plotly.express as px
+# Custom tab imports
 import tabs.tab_swimming as tab_swimming
 import tabs.tab_cycling as tab_cycling
 import tabs.tab_running as tab_running
@@ -13,61 +15,72 @@ import tabs.tab_overview as tab_overview
 import tabs.tab_stats as tab_stats
 import tabs.tab_races_results as tab_races_results
 
-import os
-import sys
+# Set page config
+st.set_page_config(
+    page_title="Garmin Dash",
+    page_icon="⌚",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-script_dir = os.path.dirname(os.path.abspath(__file__))
-db_activities_path = os.path.join(script_dir, "activities.db")
-act_db_con = sqlite3.connect(db_activities_path)
-db_races_path = os.path.join(script_dir, "races.db")
-act_rac_con = sqlite3.connect(db_races_path)
-st.set_page_config(layout="wide")
+# Load Custom CSS
+def load_css(file_name):
+    with open(file_name) as f:
+        st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
 
-# --- Helper Functions ---
+# Helper Functions
 def format_duration(seconds):
     if seconds is None:
         return "N/A"
     return str(timedelta(seconds=seconds)).split(".")[0]
 
-# --- Main App ---
 def main():
-    # Connect to SQLite DB
-    cursor = act_db_con.cursor()
+    # Load assets
+    css_path = os.path.join(os.path.dirname(__file__), "assets", "style.css")
+    if os.path.exists(css_path):
+        load_css(css_path)
 
-    # Get all table names
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
-    tables = cursor.fetchall()
+    # --- Sidebar ---
+    with st.sidebar:
+        st.markdown("<h2 style='text-align: center; font-family: \"Outfit\", sans-serif; letter-spacing: 0.05em;'>NAVIGATION</h2>", unsafe_allow_html=True)
+        st.markdown("<div style='height: 2px; background: linear-gradient(to right, #3b82f6, #10b981); margin: 10px 40px 25px 40px; border-radius: 2px;'></div>", unsafe_allow_html=True)
+        
+        tab = st.radio(
+            "Select Dashboard",
+            ["📊 Stats", "🏡 Overview", "🏃‍♂️ Run", "🏊‍♂️ Swim", "🚴‍♂️ Bike", "🎯 Race Training", "🏅 Race Results"],
+            label_visibility="collapsed"
+        )
+        
+        st.markdown("<div style='margin: 30px 0;'></div>", unsafe_allow_html=True)
+        
+        with st.expander("✨ PRO TIPS", expanded=True):
+            st.markdown("""
+            <div style='font-size: 0.9rem; color: #94a3b8;'>
+            • Click <b>Activities</b> in tables to see detailed telemetry.<br><br>
+            • Use the <b>Stats</b> tab for all-time records across sports.<br><br>
+            • <b>Race Training</b> tracks your progress toward specific goals.
+            </div>
+            """, unsafe_allow_html=True)
 
-    st.title("Garmin Activity Dashboard")
 
-    # Sidebar filters
-    st.sidebar.header("Filters")
-    filter_type = st.sidebar.selectbox(
-        "Filter by", ["week", "month", "year", "race"]
-    )
-    filter_value = st.sidebar.text_input(f"Enter {filter_type} (e.g., '2025-09-08' for week)")
-
-    # Apply filter condition for SQL
-    filter_condition = f"{filter_type} = '{filter_value}'" if filter_value else "1=1"
-
-    # Sidebar tabs
-    st.sidebar.header("Tabs")
-    tab = st.sidebar.radio("Select Tab", ["Stats", "Overview","Running", "Swimming", "Cycling", "Race Training", "Race Results"])
-
-    if tab == "Overview":
-        tab_overview.show(act_db_con)
-    elif tab == "Swimming":
-        tab_swimming.show(act_db_con)
-    elif tab == "Cycling":
-        tab_cycling.show(act_db_con)
-    elif tab == "Running":
-        tab_running.show(act_db_con)
-    elif tab == "Race Training":
-        tab_race.show(act_db_con)
-    elif tab == "Stats":
-        tab_stats.show(act_db_con)
-    elif tab == "Race Results":
-        tab_races_results.show(act_rac_con)
+    # --- Content Rendering ---
+    container = st.container()
+    with container:
+        if tab == "🏡 Overview":
+            tab_overview.show(query_bigquery)
+        elif tab == "🏊‍♂️ Swim":
+            tab_swimming.show(query_bigquery)
+        elif tab == "🚴‍♂️ Bike":
+            tab_cycling.show(query_bigquery)
+        elif tab == "🏃‍♂️ Run":
+            tab_running.show(query_bigquery)
+        elif tab == "🎯 Race Training":
+            tab_race.show(query_bigquery)
+        elif tab == "📊 Stats":
+            tab_stats.show(query_bigquery)
+        elif tab == "🏅 Race Results":
+            tab_races_results.show(query_bigquery)
 
 if __name__ == "__main__":
     main()
+

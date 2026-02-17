@@ -3,14 +3,19 @@ import folium
 from streamlit_folium import st_folium
 import streamlit as st
 
-def display_gpx_map(gpx_file_path):
+def display_gpx_map(gpx_input):
     # Parse the GPX file
     namespace = {
         'default': 'http://www.topografix.com/GPX/1/1',
         'ns3': 'http://www.garmin.com/xmlschemas/TrackPointExtension/v1'
     }
-    tree = ET.parse(gpx_file_path)
-    root = tree.getroot()
+    if isinstance(gpx_input, str) and not gpx_input.endswith('.gpx'):
+        root = ET.fromstring(gpx_input)
+    elif isinstance(gpx_input, bytes):
+        root = ET.fromstring(gpx_input)
+    else:
+        tree = ET.parse(gpx_input)
+        root = tree.getroot()
 
     # Extract track points
     track_points = []

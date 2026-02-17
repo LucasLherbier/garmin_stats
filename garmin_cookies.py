@@ -1,8 +1,9 @@
 import pickle
 import os
-import json
+
 import logging
 from garminconnect import Garmin
+from dotenv import load_dotenv
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -27,14 +28,16 @@ def get_garmin_client(email, password):
 
 # Usage
 def load_credentials():
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    creds_path = os.path.join(script_dir, "credentials.json")
-    with open(creds_path) as f:
-        credentials = json.load(f)
-        email = credentials["email"]
-        password = credentials["password"]
-        return email, password
+    load_dotenv()
+    email = os.getenv("USER_EMAIL")
+    password = os.getenv("USER_PASSWORD")
+    if not email or not password:
+        logger.error("USER_EMAIL or USER_PASSWORD environment variables not found.")
+        return None, None
+    return email, password
 
 def main():
     email, password = load_credentials()
-    return get_garmin_client(email, password)
+    if email and password:
+        return get_garmin_client(email, password)
+    return None
