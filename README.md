@@ -160,67 +160,12 @@ pip install -r requirements.txt
 
 # 4. Configure environment variables
 cp .env.example .env
-# Edit .env with your values (see below)
 
 # 5. Run the dashboard
 streamlit run app.py
 ```
 
-### `.env` file
-
-```env
-GCP_PROJECT_ID=your-gcp-project-id
-GCP_DATASET_ID=garmin_stats
-GCP_BUCKET_NAME=your-gcs-bucket-name
-GOOGLE_APPLICATION_CREDENTIALS=credentials.json   # local only
-USER_EMAIL=your-garmin-email@example.com
-USER_PASSWORD=your-garmin-password
-```
-
----
-
-## 🐳 Running with Docker
-
-```bash
-# Build the image
-docker build -t garmin-analytics .
-
-# Run locally (mount your credentials)
-docker run -p 8501:8501 \
-  --env-file .env \
-  -e GOOGLE_APPLICATION_CREDENTIALS=/app/credentials.json \
-  -v $(pwd)/credentials.json:/app/credentials.json \
-  garmin-analytics
-```
-
 Then open [http://localhost:8501](http://localhost:8501).
-
----
-
-## ☁️ Deploying on Render
-
-1. Push your repo to GitHub (**do not commit** `credentials.json` or `.env`)
-2. Create a new **Web Service** on Render pointing to your repo
-3. Set **Start command**: `streamlit run app.py --server.port $PORT --server.address 0.0.0.0`
-4. Add the following **Environment Variables** in Render's dashboard:
-
-| Variable | Value |
-|---|---|
-| `GCP_PROJECT_ID` | your GCP project ID |
-| `GCP_DATASET_ID` | `garmin_stats` |
-| `GCP_BUCKET_NAME` | your GCS bucket name |
-| `GOOGLE_CREDENTIALS_JSON` | *(paste full contents of credentials.json)* |
-
-> ⚠️ For GCP auth on Render, use the `GOOGLE_CREDENTIALS_JSON` env var approach (see `utils_gcp.py`) instead of a credentials file.
-
----
-
-## 🔒 Security Notes
-
-- `credentials.json` is listed in `.gitignore` (`*.json`) — **never commit it**
-- `.env` is listed in `.gitignore` — **never commit it**
-- Rotate your GCP service account key periodically
-- Use the principle of least privilege: only grant the service account the permissions it needs
 
 ---
 
@@ -236,4 +181,5 @@ Then open [http://localhost:8501](http://localhost:8501).
 | Database | Google BigQuery |
 | Garmin API | garminconnect (Python SDK) |
 | Styling | Custom CSS — Glassmorphism dark theme |
+
 | Font | Outfit (Google Fonts) |
