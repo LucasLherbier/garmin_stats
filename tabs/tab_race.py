@@ -1,12 +1,12 @@
 import streamlit as st
 import pandas as pd
 from datetime import timedelta
-import sql_queries as sql 
+from utils import sql_queries as sql 
 import plotly.express as px
 import uuid
 from actions import utils as ut
 from actions import utils_ui as ui
-from preprocess_activities import TRAINING_RACE_PERIODS
+from utils.pipeline.preprocess_activities import TRAINING_RACE_PERIODS
 
 def show(conn):
     st.title("🎯 Race Preparation")
@@ -23,8 +23,13 @@ def show(conn):
     selected_race_index = race_options.index(selected_race_display)
     selected_race_data = races[selected_race_index]
 
-    # Fetch race metrics
-    race_metrics = conn(sql.get_race_metrics_query(selected_race_data['start'], selected_race_data['end']))
+    # Current date for filtering future races
+    today_dt = pd.Timestamp.now()
+    # For metrics and distance graphs: only show up to today or race end
+    analysis_end_date = min(today_dt, pd.to_datetime(selected_race_data['end'])).strftime('%Y-%m-%d')
+
+    # Fetch race metrics (using truncated period if applicable)
+    race_metrics = conn(sql.get_race_metrics_query(selected_race_data['start'], analysis_end_date))
 
     if not race_metrics.empty:
         st.write("### Preparation Summary")
@@ -105,19 +110,33 @@ def show(conn):
         
         for sport in sports:
             sport_data = conn(sql.get_race_distance_by_timerange_query(
-                selected_race_data['start'], selected_race_data['end'], granularity, sport['name']
+                selected_race_data['start'], analysis_end_date, granularity, sport['name']
             ))
             if not sport_data.empty:
                 fig = px.area(sport_data, x="time_period", y="total_distance", markers=True, 
                              color_discrete_sequence=[sport['color']], template="plotly_dark")
                 fig.update_layout(
-                    title=f"{sport['emoji']} {sport['display']} Volume",
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)',
+                    title=dict(
+                        text=f"{sport['emoji']} {sport['display']} Volume",
+                        font=dict(size=18, family="Outfit")
+                    ),
+                    plot_bgcolor='rgba(255, 255, 255, 0.03)',
+                    paper_bgcolor='rgba(255, 255, 255, 0.03)',
                     yaxis_title="Distance (km)",
-                    xaxis_title=granularity.capitalize()
+                    xaxis_title=granularity.capitalize(),
+                    margin=dict(t=50, b=40, l=60, r=20),
+                    shapes=[dict(
+                        type='rect',
+                        xref='paper',
+                        yref='paper',
+                        x0=0,
+                        y0=0,
+                        x1=1,
+                        y1=1,
+                        line=dict(color='rgba(255, 255, 255, 0.1)', width=1)
+                    )]
                 )
-                st.plotly_chart(fig, width='stretch')
+                st.plotly_chart(fig, use_container_width=True)
 
         st.markdown("---")
         st.write("### ⏱️ Total Training Load")

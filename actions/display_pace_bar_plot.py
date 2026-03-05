@@ -15,95 +15,79 @@ def plot_running_bar(split_input):
         df = pd.read_csv(split_input, delimiter=',')
     else:
         df = split_input.copy()
-    df = df.iloc[:-1]  # Remove last row if it contains unwanted data
+    
+    # Filter out summary row if it exists
+    df = df[df['Split'] != 'Summary']
+    
     df['Avg Moving Paces (s)'] = df['Avg Moving Paces'].apply(ut.pace_to_seconds)
 
     # Calculate the x positions for each bar
-    x_positions = [0.5]
+    x_positions = [0]
     for i in range(1, len(df)):
         x_positions.append(x_positions[i-1] + df['Distance'].iloc[i-1])
+    
+    # Bar centers for labels
+    bar_centers = [x + d/2 for x, d in zip(x_positions, df['Distance'])]
 
     # Create a bar for each split
     fig = go.Figure()
 
     # Add bars for each split
-    for i, (split, distance, moving_pace, x_pos) in enumerate(zip(df['Split'], df['Distance'], df['Avg Moving Paces (s)'], x_positions)):
-        fig.add_trace(go.Bar(
-            x=[x_pos],
-            y=[moving_pace],
-            width=distance,
-            name=f'Split {split}',  # We will remove this from the legend
-            offset=0,
-            marker_color='royalblue',  # Set a solid color for better contrast
-            hovertext=f"Split: {split}<br>Distance: {distance*1000:.0f} meters<br>Pace: {df['Avg Moving Paces'].iloc[i]}",
-            hoverinfo='text',
-        ))
-
-    # Add vertical lines between splits
-    for x_pos in x_positions[1:]:  # Skip the first since it's the starting point
-        fig.add_trace(go.Scatter(
-            x=[x_pos, x_pos],
-            y=[0, max(df['Distance'])],  # Length of the vertical line based on the max elevation
-            mode='lines',
-            line=dict(color='white', width=2),  # Make lines slightly thicker and white for contrast
-            showlegend=False  # Don't add these lines to the legend
-        ))
+    fig.add_trace(go.Bar(
+        x=bar_centers,
+        y=df['Avg Moving Paces (s)'],
+        width=df['Distance'],
+        marker=dict(
+            color='royalblue',
+            line=dict(color='white', width=1)
+        ),
+        hovertext=[f"Split: {s}<br>Distance: {d*1000:.0f}m<br>Pace: {p}" 
+                  for s, d, p in zip(df['Split'], df['Distance'], df['Avg Moving Paces'])],
+        hoverinfo='text',
+    ))
 
     # Dynamic y-axis range
-    min_pace = df['Avg Moving Paces (s)'].min() * 0.9
-    max_pace = df['Avg Moving Paces (s)'].quantile(0.90)  # 90th percentile
-    # Add padding for better readability
-    pace_padding = 5  # Padding in seconds
-    yaxis_min = max(min_pace - pace_padding, 0)  # Avoid going below 0
-    yaxis_max = max_pace + pace_padding
+    pace_vals = df['Avg Moving Paces (s)']
+    min_p = pace_vals.min()
+    max_p = pace_vals.max()
+    
+    yaxis_min = max(min_p - 15, 0)
+    yaxis_max = max_p + 15
 
-    # Custom y-axis ticks
-    pace_step = 30
-    y_ticks = list(range(int(yaxis_min), int(yaxis_max) + 1, pace_step))
+    # Ticks every 30s
+    tick_step = 30 if (yaxis_max - yaxis_min) > 60 else 15
+    y_ticks = list(range(int(yaxis_min), int(yaxis_max) + 1, tick_step))
     y_ticktext = [f"{int(m)//60:02d}:{int(m)%60:02d}" for m in y_ticks]
 
     # Update layout for better UX/UI
     fig.update_layout(
-        title='Avg Moving Pace per Split',
-        xaxis_title='Split (Distance)',
-        yaxis_title='Avg Moving Pace (mm:ss)',
-        bargap=0.2,  # Adjust gap between bars for a cleaner look
-        barmode='overlay',
+        title=dict(text='Avg Moving Pace per Split', font=dict(size=20, color='white')),
+        xaxis_title='Distance (km)',
+        yaxis_title='Pace (mm:ss)',
         xaxis=dict(
-            tickvals=x_positions,
-            ticktext=df['Split'],
-            showgrid=True,  # Show grid lines for better readability
-            gridcolor='lightgray',
-            zeroline=False,  # Don't show the zero line
-            tickfont=dict(size=14, color='black', family='Arial, sans-serif'),  # Ensure tick labels are readable
+            showgrid=True,
+            gridcolor='rgba(255,255,255,0.1)',
+            zeroline=False,
+            tickfont=dict(color='white'),
+            title_font=dict(color='white')
         ),
         yaxis=dict(
             tickvals=y_ticks,
             ticktext=y_ticktext,
             range=[yaxis_min, yaxis_max],
-            showgrid=True,  # Show grid lines for better readability
-            gridcolor='lightgray',
-            zeroline=False,  # Don't show the zero line
-            tickfont=dict(size=14, color='black', family='Arial, sans-serif'),  # Ensure y-axis ticks are readable
-            title_font=dict(size=16, color='black', family='Arial, sans-serif', weight='bold'),  # Bold y-axis title
+            showgrid=True,
+            gridcolor='rgba(255,255,255,0.1)',
+            zeroline=False,
+            tickfont=dict(color='white'),
+            title_font=dict(color='white')
         ),
-        plot_bgcolor='#f5f5f5',  # Change background color (light gray)
-        paper_bgcolor='#f5f5f5',  # Paper background (light gray)
-        showlegend=False,  # Remove the legend (since we don't need it for splits)
-        hovermode='x unified',  # Unified hover for better UX
-        font=dict(
-            family='Arial, sans-serif',  # Use a clean font
-            size=16,  # Increase the font size for better readability
-            color='black',  # Strong black color for all text
-        ),
-        hoverlabel=dict(
-            bgcolor='white',  # Set background color to white for hover text
-            font=dict(
-                color='black',  # Ensure hover text is readable
-                size=14,  # Adjust font size of hover text
-                family='Arial, sans-serif',
-            ),
-        ),
+        plot_bgcolor='#1e1e1e',
+        paper_bgcolor='#1e1e1e',
+        showlegend=False,
+        hovermode='closest',
+        font=dict(family='Arial, sans-serif', size=14, color='white'),
+        margin=dict(l=60, r=30, t=50, b=50),
+        height=400
     )
 
     return fig

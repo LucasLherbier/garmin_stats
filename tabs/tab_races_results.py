@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-import sql_queries as sql
+from utils import sql_queries as sql
 from actions import utils_ui as ui
 
 def show(conn):
@@ -61,7 +61,7 @@ def show(conn):
                     with m_cols[2]: ui.metric_card("Category Rank", f"{row['ranking_category']}", icon="📊")
                     with m_cols[3]: ui.metric_card("Gender Rank", f"{row['ranking_gender']}", icon="♂️")
 
-                    with st.expander("🔍 Details"):
+                    with st.expander("🔍"):
                         st.write(f"**Pace:** {row['running_pace']}")
                         st.markdown(f"[🔗 View Official Results]({row['link']})")
         else:

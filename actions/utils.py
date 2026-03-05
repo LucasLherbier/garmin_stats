@@ -40,7 +40,15 @@ def safe_format(value, fmt="{:.2f}", default="N/A"):
     
     
 def format_duration_no_days(seconds):
-    seconds = int(seconds)
+    if seconds is None:
+        return "00:00:00"
+    if isinstance(seconds, str) and ":" in seconds:
+        return seconds
+    try:
+        seconds = int(float(seconds))
+    except (ValueError, TypeError):
+        return str(seconds)
+        
     hours = seconds // 3600
     minutes = (seconds % 3600) // 60
     sec = seconds % 60
@@ -95,18 +103,18 @@ def plot_week_volume(activity_duration_data, granularity):
     # Layout enhancements
     fig.update_layout(
         title=dict(
-            text=f"Training Volume by {granularity.capitalize()}",
+            text=f"Total Volume ({granularity.capitalize()})",
             font=dict(size=20, family="Outfit")
         ),
-        plot_bgcolor='rgba(0,0,0,0)',
-        paper_bgcolor='rgba(0,0,0,0)',
-        margin=dict(t=60, b=40, l=60, r=20),
+        plot_bgcolor='rgba(255, 255, 255, 0.03)',
+        paper_bgcolor='rgba(255, 255, 255, 0.03)',
+        margin=dict(t=60, b=80, l=60, r=20),
         legend=dict(
             orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1,
+            yanchor="top",
+            y=-0.15,
+            xanchor="center",
+            x=0.5,
             title=None,
             bgcolor='rgba(0,0,0,0)'
         ),
@@ -121,7 +129,17 @@ def plot_week_volume(activity_duration_data, granularity):
             gridcolor='rgba(255,255,255,0.05)',
             tickfont=dict(color="#94a3b8")
         ),
-        bargap=0.15
+        bargap=0.15,
+        shapes=[dict(
+            type='rect',
+            xref='paper',
+            yref='paper',
+            x0=0,
+            y0=0,
+            x1=1,
+            y1=1,
+            line=dict(color='rgba(255, 255, 255, 0.1)', width=1)
+        )]
     )
 
     # Y-AXIS Ticks (HH:MM:SS)
@@ -148,7 +166,7 @@ def plot_week_volume(activity_duration_data, granularity):
         hoverinfo='skip'
     )
 
-    st.plotly_chart(fig, width='stretch', key=f"volume_chart_{uuid.uuid4()}")
+    st.plotly_chart(fig, use_container_width=True, key=f"volume_chart_{uuid.uuid4()}")
 
 def plot_week_area(running_data, y_column, y_title, sport_name, time_range_key):
     """
@@ -163,8 +181,8 @@ def plot_week_area(running_data, y_column, y_title, sport_name, time_range_key):
     """
 
     time_range_label = {
-        "8_weeks": "Latest 8 Weeks",
-        "6_months": "Last 6 Months",
+        "4_units": "Latest 4 Periods",
+        "6_units": "Latest 6 Periods",
         "ytd": "Year to Date",
         "all": "All Time"
     }.get(time_range_key, time_range_key)
@@ -174,7 +192,7 @@ def plot_week_area(running_data, y_column, y_title, sport_name, time_range_key):
         running_data,
         x="Week",
         y=y_column,
-        title=f"{sport_name.capitalize()} by Week ({time_range_label})",
+        title=f"{sport_name.capitalize()} Volume ({time_range_label})",
         labels={y_column: y_title},
         markers=True
     )
@@ -188,7 +206,7 @@ def plot_week_area(running_data, y_column, y_title, sport_name, time_range_key):
     fig.update_traces(textposition='top center')
 
     # Render in Streamlit
-    st.plotly_chart(fig, width='stretch')
+    st.plotly_chart(fig, use_container_width=True)
     
     
     
@@ -230,24 +248,9 @@ def paginated_table(
 ):
     """
     Reusable paginated dataframe component.
-    
-    Parameters
-    ----------
-    df : pd.DataFrame
-    display_columns : dict
-        Mapping {column_name → display_label}
-    column_configuration : dict or None
-        Config for st.dataframe()
-    page_size : int
-        Number of rows per page
-    session_key : str
-        Unique key for session_state pagination + table
-    
-    Returns
-    -------
-    paginated_df : pd.DataFrame
-    selected_row : dict or None
     """
+    # Debug: Check Streamlit version
+    # st.sidebar.info(f"Streamlit Version: {st.__version__}")
 
     # -----------------------------------
     # Filter available columns
@@ -279,20 +282,57 @@ def paginated_table(
     # -----------------------------------
     # Display dataframe
     # -----------------------------------
-    selected_rows = st.dataframe(
-        paginated_df,
-        column_config=column_configuration,
-        hide_index=True,
-        on_select="rerun",
-        selection_mode="single-row",
-        key=table_key,
-    )
+    # Selection is 1.35.0+ feature
+    use_selection = False
+    try:
+        from packaging import version
+        if version.parse(st.__version__) >= version.parse("1.35.0"):
+            use_selection = True
+    except:
+        # Fallback to simple check
+        try:
+            v_parts = [int(x) for x in st.__version__.split('.')]
+            if v_parts[0] > 1 or (v_parts[0] == 1 and v_parts[1] >= 35):
+                use_selection = True
+        except:
+            pass
+
+    if use_selection:
+        try:
+            selected_rows = st.dataframe(
+                paginated_df,
+                column_config=column_configuration,
+                hide_index=True,
+                on_select="rerun",
+                selection_mode="single-row",
+                key=table_key,
+            )
+        except TypeError:
+            # Final fallback if something is weird with the version
+            st.dataframe(
+                paginated_df,
+                column_config=column_configuration,
+                hide_index=True,
+                key=table_key,
+            )
+            selected_rows = None
+    else:
+        st.dataframe(
+            paginated_df,
+            column_config=column_configuration,
+            hide_index=True,
+            key=table_key,
+        )
+        selected_rows = None
+        # st.info("💡 Note: Row selection is only supported in Streamlit 1.35.0+.")
+
     # Extract selected row
-    selected_index = (
-        selected_rows["selection"]["rows"][0]
-        if selected_rows and selected_rows.get("selection", {}).get("rows")
-        else None
-    )
+    selected_index = None
+    if selected_rows is not None and isinstance(selected_rows, dict):
+        selection = selected_rows.get("selection", {})
+        rows = selection.get("rows", [])
+        if rows:
+            selected_index = rows[0]
 
     # -----------------------------------
     # Pagination Controls
@@ -300,13 +340,13 @@ def paginated_table(
     col1, col2, col3, col4, col5 = st.columns([1, 1, 1, 1, 4])
 
     with col1:
-        if st.button("⏪ First", width='stretch',
+        if st.button("⏪ First", use_container_width=True,
                      disabled=st.session_state[page_key] == 1):
             st.session_state[page_key] = 1
             st.rerun()
 
     with col2:
-        if st.button("← Prev", width='stretch',
+        if st.button("← Prev", use_container_width=True,
                      disabled=st.session_state[page_key] == 1):
             st.session_state[page_key] -= 1
             st.rerun()
@@ -318,13 +358,13 @@ def paginated_table(
         )
 
     with col4:
-        if st.button("Next →", width='stretch',
+        if st.button("Next →", use_container_width=True,
                      disabled=st.session_state[page_key] >= total_pages):
             st.session_state[page_key] += 1
             st.rerun()
 
     with col5:
-        if st.button("Last ⏩", width='stretch',
+        if st.button("Last ⏩", use_container_width=True,
                      disabled=st.session_state[page_key] >= total_pages):
             st.session_state[page_key] = total_pages
             st.rerun()

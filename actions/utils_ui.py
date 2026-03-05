@@ -34,12 +34,12 @@ def metric_card(label, value, delta=None, icon=None):
     icon_html = f"<div style='font-size: 1.5rem;'>{icon if icon else ''}</div>" if icon else ""
     
     st.markdown(f"""
-    <div class="glass-metric-card">
-        <div style='display: flex; align-items: center; gap: 10px; margin-bottom: 8px;'>
+    <div class="glass-metric-card" style="display: flex; flex-direction: column; align-items: center; text-align: center; justify-content: center;">
+        <div style='display: flex; flex-direction: column; align-items: center; gap: 4px; margin-bottom: 8px;'>
             {icon_html}
             <div style='font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; line-height: 1.1;'>{label}</div>
         </div>
-        <div style="font-size: 1.6rem; font-weight: 700; color: #f8fafc; margin-top: auto;">{value}</div>
+        <div style="font-size: 1.6rem; font-weight: 600; color: #f8fafc;">{value}</div>
         {delta_html}
     </div>
     """, unsafe_allow_html=True)

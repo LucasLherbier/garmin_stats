@@ -7,8 +7,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 from actions import utils as ut
 from actions import utils_ui as ui
-import sql_queries as sql
-from utils_gcp import read_csv_from_gcs, check_gcs_path_exists
+from utils import sql_queries as sql 
+from utils.utils_gcp import read_csv_from_gcs, check_gcs_path_exists
 from actions.display_map import display_gpx_map
 from actions.parse_tcx_csv import parse_swimming_csv
 from actions.display_pace_bar_plot import plot_swimming_bar
@@ -24,43 +24,42 @@ def show(conn):
         st.write("### Volume Summary")
         dict_columns = {"last_1":"Last Week", "last_4":"Last 4 Weeks", "last_12":"Last 12 Weeks", "last_18":"Last 18 Weeks", "last_all": "YTD"}
         
-        tabs = st.tabs(list(dict_columns.values()))
+        if 'swim_volume_range' not in st.session_state:
+            st.session_state.swim_volume_range = "last_1"
+
+        # Selection buttons
+        v_cols = st.columns(len(dict_columns))
         for i, (key, title) in enumerate(dict_columns.items()):
-            with tabs[i]:
-                row = race_metrics[race_metrics['name'] == key]
-                if not row.empty:
-                    cols = st.columns(4)
-                    with cols[0]: ui.metric_card("Total Distance", f"{row['distance_total'].item() or 0:.0f} m", icon="📏")
-                    with cols[1]: ui.metric_card("Total Duration", ut.format_duration_no_days(row['duration_total'].item()), icon="⏱️")
-                    with cols[2]: ui.metric_card("Trainings", f"{row['nb_trainings'].item() or 0:.0f}", icon="🏊‍♂️")
-                    with cols[3]: ui.metric_card("Avg HR", f"{row['averageHR'].item() or 0:.0f} bpm", icon="❤️")
+            if v_cols[i].button(title, key=f"v_swim_{key}", use_container_width=True, 
+                                type="primary" if st.session_state.swim_volume_range == key else "secondary"):
+                st.session_state.swim_volume_range = key
+                st.rerun()
+
+        selected_key = st.session_state.swim_volume_range
+        row = race_metrics[race_metrics['name'] == selected_key]
+        if not row.empty:
+            cols = st.columns(4)
+            avg_hr = row['averageHR'].fillna(0).iloc[0]
+            with cols[0]: ui.metric_card("Total Distance", f"{row['distance_total'].iloc[0] or 0:.0f} m", icon="📏")
+            with cols[1]: ui.metric_card("Total Duration", ut.format_duration_no_days(row['duration_total'].iloc[0]), icon="⏱️")
+            with cols[2]: ui.metric_card("Trainings", f"{row['nb_trainings'].iloc[0] or 0:.0f}", icon="🏊‍♂️")
+            with cols[3]: ui.metric_card("Avg HR", f"{avg_hr:.0f} bpm", icon="❤️")
 
     st.markdown("---")
 
     st.write("### Performance Trends")
     if "time_range_metrics" not in st.session_state:
-        st.session_state.time_range_metrics = "8_weeks"
+        st.session_state.time_range_metrics = "4_units"
 
     tr_cols = st.columns(4)
-    ranges = [("8 Weeks", "8_weeks"), ("6 Months", "6_months"), ("YTD", "ytd"), ("All Time", "all")]
+    ranges = [("4 Weeks", "4_units"), ("6 Weeks", "6_units"), ("YTD", "ytd"), ("All Time", "all")]
     for i, (label, val) in enumerate(ranges):
         if tr_cols[i].button(label, use_container_width=True, type="primary" if st.session_state.time_range_metrics == val else "secondary"):
             st.session_state.time_range_metrics = val
             st.rerun()
 
     swimming_data = conn(sql.get_weekly_sport_query("swimming", st.session_state.time_range_metrics))
-
-    if not swimming_data.empty:
-        fig = px.area(swimming_data, x="Week", y="total_distance", markers=True, 
-                     color_discrete_sequence=['#38bdf8'], 
-                     template="plotly_dark")
-        fig.update_layout(
-            plot_bgcolor='rgba(0,0,0,0)',
-            paper_bgcolor='rgba(0,0,0,0)',
-            xaxis=dict(showgrid=False),
-            yaxis=dict(showgrid=True, gridcolor='rgba(255,255,255,0.1)')
-        )
-        st.plotly_chart(fig, use_container_width=True)
+    ut.plot_week_area(swimming_data, "total_distance", "Distance (m)", "Swimming", st.session_state.time_range_metrics)
 
     st.markdown("---")
     st.write("### 📜 Recent Activities")
@@ -68,8 +67,11 @@ def show(conn):
     swimming_table = conn(sql.get_recent_activities_query("swimming", st.session_state.time_range_metrics))
 
     if not swimming_table.empty:
+        # Convert Day to YYYY-MM-DD
+        swimming_table['Day'] = pd.to_datetime(swimming_table['Day']).dt.date
+
         column_configuration = {
-            "Day": st.column_config.TextColumn("Day"),
+            "Day": st.column_config.DateColumn("Day", format="YYYY-MM-DD"),
             "distance": st.column_config.NumberColumn("Distance (m)", format="%d"),
             "duration": st.column_config.TextColumn("Duration"),
             "averageHR": st.column_config.NumberColumn("Avg HR"),
@@ -124,4 +126,3 @@ def show(conn):
                     st.dataframe(main_splits, use_container_width=True)
     else:
         st.info("No swimming activities found.")
-

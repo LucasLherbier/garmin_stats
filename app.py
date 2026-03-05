@@ -1,10 +1,11 @@
 import streamlit as st
 import pandas as pd
 from datetime import timedelta
-import sql_queries as sql
-from utils_gcp import query_bigquery
+from utils import sql_queries as sql
+from utils.utils_gcp import query_bigquery
 import os
 import sys
+from streamlit_option_menu import option_menu
 
 # Custom tab imports
 import tabs.tab_swimming as tab_swimming
@@ -20,7 +21,7 @@ st.set_page_config(
     page_title="Garmin Dash",
     page_icon="⌚",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
 # Load Custom CSS
@@ -40,22 +41,69 @@ def main():
     if os.path.exists(css_path):
         load_css(css_path)
 
+    # --- Top Navigation Bar ---
+    st.markdown("<div class='garmin-title-spacer'></div>", unsafe_allow_html=True)
+    st.markdown("<h1 class='garmin-title'>GARMIN ANALYTICS</h1>", unsafe_allow_html=True)
+    st.markdown("<div class='garmin-title-divider'></div>", unsafe_allow_html=True)
+    
+    # Navigation buttons
+    nav_options = ["Stats", "Overview", "Run", "Swim", "Bike", "Race", "Results"]
+    icons = ["bar-chart-line-fill", "grid-3x3-gap-fill", "speedometer2", "water", "bicycle", "flag-fill", "trophy-fill"]
+
+    selected_tab = option_menu(
+        menu_title=None,
+        options=nav_options,
+        icons=icons,
+        menu_icon="cast", 
+        default_index=0, 
+        orientation="horizontal",
+        styles={
+            "menu": {
+                "background-color": "transparent !important",
+            },
+            "nav": {
+                "background-color": "transparent !important", # Removes inner black bars
+            },
+            "container": {
+                "padding": "5px !important", 
+                "background-color": "rgba(15, 23, 42, 0.4)", # Your glass effect
+                "border-radius": "18px",
+                "border": "1px solid rgba(255, 255, 255, 0.1)",
+                "backdrop-filter": "blur(20px)",
+                "width": "100%",          
+                "margin": "0 auto"
+            },
+            "icon": {"color": "#fdb927", "font-size": "17px"}, 
+            "nav-link": {
+                "font-family": "'Inter', 'Segoe UI', sans-serif",
+                "font-size": "16px", 
+                "font-weight": "500",
+                "text-transform": "none",
+                "letter-spacing": "0",
+                "color": "#94a3b8",
+                "border-radius": "14px",
+                "transition": "all 0.3s ease",
+            },
+            "nav-link-selected": {
+                "font-family": "'Inter', 'Segoe UI', sans-serif",
+                "background": "linear-gradient(135deg, #551e82 0%, #3d1560 100%)",
+                "color": "#ffffff",
+                "font-weight": "600",
+                "text-transform": "none",
+                "letter-spacing": "0",
+                "text-shadow": "0 2px 4px rgba(0,0,0,0.3)",
+                "box-shadow": "0 8px 15px rgba(85, 30, 130, 0.35)",
+                "border": "1px solid #fdb927",
+            },
+        }
+    )
+
     # --- Sidebar ---
     with st.sidebar:
-        st.markdown("<h2 style='text-align: center; font-family: \"Outfit\", sans-serif; letter-spacing: 0.05em;'>NAVIGATION</h2>", unsafe_allow_html=True)
-        st.markdown("<div style='height: 2px; background: linear-gradient(to right, #3b82f6, #10b981); margin: 10px 40px 25px 40px; border-radius: 2px;'></div>", unsafe_allow_html=True)
-        
-        tab = st.radio(
-            "Select Dashboard",
-            ["📊 Stats", "🏡 Overview", "🏃‍♂️ Run", "🏊‍♂️ Swim", "🚴‍♂️ Bike", "🎯 Race Training", "🏅 Race Results"],
-            label_visibility="collapsed"
-        )
-        
-        st.markdown("<div style='margin: 30px 0;'></div>", unsafe_allow_html=True)
-        
+        st.markdown("<h3 class='sidebar-title'>EXTRAS</h3>", unsafe_allow_html=True)
         with st.expander("✨ PRO TIPS", expanded=True):
             st.markdown("""
-            <div style='font-size: 0.9rem; color: #94a3b8;'>
+            <div class='pro-tips-content'>
             • Click <b>Activities</b> in tables to see detailed telemetry.<br><br>
             • Use the <b>Stats</b> tab for all-time records across sports.<br><br>
             • <b>Race Training</b> tracks your progress toward specific goals.
@@ -64,22 +112,20 @@ def main():
 
 
     # --- Content Rendering ---
-    container = st.container()
-    with container:
-        if tab == "🏡 Overview":
-            tab_overview.show(query_bigquery)
-        elif tab == "🏊‍♂️ Swim":
-            tab_swimming.show(query_bigquery)
-        elif tab == "🚴‍♂️ Bike":
-            tab_cycling.show(query_bigquery)
-        elif tab == "🏃‍♂️ Run":
-            tab_running.show(query_bigquery)
-        elif tab == "🎯 Race Training":
-            tab_race.show(query_bigquery)
-        elif tab == "📊 Stats":
-            tab_stats.show(query_bigquery)
-        elif tab == "🏅 Race Results":
-            tab_races_results.show(query_bigquery)
+    if selected_tab == "Overview":
+        tab_overview.show(query_bigquery)
+    elif selected_tab == "Swim":
+        tab_swimming.show(query_bigquery)
+    elif selected_tab == "Bike":
+        tab_cycling.show(query_bigquery)
+    elif selected_tab == "Run":
+        tab_running.show(query_bigquery)
+    elif selected_tab == "Race":
+        tab_race.show(query_bigquery)
+    elif selected_tab == "Stats":
+        tab_stats.show(query_bigquery)
+    elif selected_tab == "Results":
+        tab_races_results.show(query_bigquery)
 
 if __name__ == "__main__":
     main()
