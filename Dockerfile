@@ -12,7 +12,7 @@ WORKDIR /app
 
 # ── Python dependencies (cached layer) ────────────────────────────────────────
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --root-user-action=ignore -r requirements.txt
 
 # ── Application code ───────────────────────────────────────────────────────────
 COPY . .
