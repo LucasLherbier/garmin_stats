@@ -6,50 +6,49 @@ A personal triathlon training analytics platform built with **Streamlit**, power
 
 ## 🏗️ Architecture Overview
 
-```
+The system is separated into two distinct parts: an automated **Data Extraction & ETL Pipeline** and the interactive **Streamlit Dashboard App**.
+
+### 1️⃣ Part 1: Data Extraction & Pipeline (ETL)
+Data is automatically fetched on a schedule via GitHub Actions, cleaned, and warehoused in Google Cloud.
+
+```text
 ┌─────────────────────────────────────────────────────────────────────┐
 │                        GARMIN CONNECT API                           │
-│                    (garminconnect Python SDK)                        │
+│                    (garminconnect Python SDK)                       │
 └────────────────────────────┬────────────────────────────────────────┘
                              │  extract_weekly_activities.py
-                             │  (GPX · TCX · CSV · Metadata)
+                             │  (Run automatically by GitHub Actions)
                              ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │                   GOOGLE CLOUD STORAGE (GCS)                        │
-│                                                                     │
-│  data/                                                              │
-│  ├── raw/                                                           │
-│  │   └── YYYY-MM/                                                   │
-│  │       └── {activityId}/                                          │
-│  │           ├── {activityId}.gpx        ← GPS track               │
-│  │           ├── {activityId}.tcx        ← Telemetry (HR, cadence) │
-│  │           ├── {activityId}.csv        ← Split data              │
-│  │           └── {activityId}_information.csv  ← Summary metadata  │
-│  └── processed/                                                     │
-│      └── YYYY-MM/                                                   │
-│          └── {date}_activities_processed_.csv                       │
+│  (Stores raw GPX, TCX, CSV, and Activity Metadata)                  │
 └────────────────────────────┬────────────────────────────────────────┘
-                             │  preprocess_activities.py
+                             │  preprocess_activities.py (Python ETL)
                              │  • Clean & normalize fields
                              │  • Standardize activity types
-                             │  • Assign training periods / race labels
-                             │  • Compute Day / Week / Month columns
+                             │  • Compute analytical columns
                              ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │                    GOOGLE BIGQUERY                                  │
-│                                                                     │
-│  Dataset: garmin_stats                                              │
-│  ├── activities   ← All processed training activities               │
-│  ├── races        ← Official race results                           │
-│  └── logs         ← Upload processing audit log                    │
-└────────────────────────────┬────────────────────────────────────────┘
-                             │  sql_queries.py  (query layer)
-                             │  utils_gcp.py    (BigQuery client)
-                             ▼
+│  (Data Warehouse: activities, races, logs)                          │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### 2️⃣ Part 2: Interactive Dashboard Application
+The frontend application is built in Streamlit and deployed as a web service via a **Docker container** on Render, serving processed analytics directly from BigQuery.
+
+```text
 ┌─────────────────────────────────────────────────────────────────────┐
-│                   STREAMLIT DASHBOARD  (app.py)                     │
+│                    DEPLOYMENT: RENDER (Docker container)            │
 │                                                                     │
-│   Stats │ Overview │ Run │ Swim │ Bike │ Race │ Results             │
+│  ┌───────────────────────────────────────────────────────────────┐  │
+│  │                STREAMLIT DASHBOARD (app.py)                   │  │
+│  │   Stats │ Overview │ Run │ Swim │ Bike │ Race │ Results       │  │
+│  └────────┬──────────────────────────────────────────────┬───────┘  │
+│           │ sql_queries.py / utils_gcp.py                │          │
+│           ▼                                              ▼          │
+│   GOOGLE BIGQUERY                            GOOGLE CLOUD STORAGE   │
+│   (Core Analytics & Data)                    (Raw details like GPX) │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -57,7 +56,7 @@ A personal triathlon training analytics platform built with **Streamlit**, power
 
 ## ⚙️ Data Pipeline — Step by Step
 
-### 1. Extraction — `utils/extract_weekly_activities.py`
+### 1. Extraction — `utils/pipeline/extract_weekly_activities.py`
 - Connects to Garmin Connect via `garminconnect` SDK (cookie-based auth)
 - For each activity in a given week range:
   - Downloads **GPX** (GPS track), **TCX** (telemetry), **CSV** (splits)
@@ -65,7 +64,7 @@ A personal triathlon training analytics platform built with **Streamlit**, power
   - Skips activities already present in GCS (deduplication)
   - Logs every upload result to the BigQuery `logs` table
 
-### 2. Preprocessing — `utils/preprocess_activities.py`
+### 2. Preprocessing — `utils/pipeline/preprocess_activities.py`
 | Step | What it does |
 |---|---|
 | `load_and_clean_data` | Normalizes numeric types, computes Day/Week/Month columns |
@@ -122,52 +121,27 @@ garmin_stats/
 │   ├── display_pace_bar_plot.py # Pace split bar charts
 │   └── parse_tcx_csv.py        # TCX / swimming CSV parsers
 │
-└── utils/                      # Backend data pipeline
+└── utils/                      # Backend clients & configurations
     ├── sql_queries.py           # All BigQuery SQL queries
     ├── utils_gcp.py             # GCS + BigQuery clients
-    ├── extract_weekly_activities.py  # Garmin → GCS pipeline
-    ├── preprocess_activities.py      # Clean + label + upload
-    ├── connect_to_garmin.py     # Garmin auth helper
-    ├── garmin_cookies.py        # Cookie-based login
-    ├── create_weekly_stats.py   # Local aggregation utility
-    └── list_bq_tables.py        # BQ table debug helper
+    │
+    └── pipeline/                # ETL Data pipeline 
+        ├── extract_weekly_activities.py  # Garmin → GCS pipeline
+        ├── preprocess_activities.py      # Clean + label + upload
+        ├── connect_to_garmin.py     # Garmin auth helper
+        ├── garmin_cookies.py        # Cookie-based login
+        └── create_weekly_stats.py   # Local aggregation utility
 ```
 
 ---
 
-## 🚀 Running Locally
+## 🚀 Tech details
 
 ### Prerequisites
 - Python 3.11+
 - A GCP project with BigQuery and Cloud Storage enabled
 - A GCP Service Account key (JSON) with `BigQuery Data Editor` + `Storage Object Admin` roles
 - A Garmin Connect account
-
-### Setup
-
-```bash
-# 1. Clone the repo
-git clone https://github.com/your-username/garmin_stats.git
-cd garmin_stats
-
-# 2. Create and activate a virtual environment
-python -m venv garmin_stats_venv
-garmin_stats_venv\Scripts\activate   # Windows
-# source garmin_stats_venv/bin/activate  # macOS/Linux
-
-# 3. Install dependencies
-pip install -r requirements.txt
-
-# 4. Configure environment variables
-cp .env.example .env
-
-# 5. Run the dashboard
-streamlit run app.py
-```
-
-Then open [http://localhost:8501](http://localhost:8501).
-
----
 
 ## 🛠️ Tech Stack
 
@@ -181,5 +155,4 @@ Then open [http://localhost:8501](http://localhost:8501).
 | Database | Google BigQuery |
 | Garmin API | garminconnect (Python SDK) |
 | Styling | Custom CSS — Glassmorphism dark theme |
-
 | Font | Outfit (Google Fonts) |
