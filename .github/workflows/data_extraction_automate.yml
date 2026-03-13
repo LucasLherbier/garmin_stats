@@ -1,0 +1,46 @@
+name: Weekly Garmin Sync
+
+on:
+  schedule:
+    # Runs at 02:00 UTC every Monday
+    - cron: '0 2 * * 1'
+  workflow_dispatch: # Allows you to manually trigger the workflow from GitHub's UI
+
+jobs:
+  extract_garmin_data:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Calculate Monday 2 Weeks Ago
+      run: |
+        # Since this runs on Monday, '14 days ago' gives the Monday from 2 weeks ago
+        MONDAY_DATE=$(date -d "14 days ago" +%Y-%m-%d)
+        echo "Calculated start date: $MONDAY_DATE"
+        echo "MONDAY_DATE=$MONDAY_DATE" >> $GITHUB_ENV
+
+    - name: Run Garmin Extraction
+      env:
+        # These secrets must be configured in your GitHub repository settings
+        GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+        GCP_DATASET_ID: ${{ secrets.GCP_DATASET_ID }}
+        GCP_BUCKET_NAME: ${{ secrets.GCP_BUCKET_NAME }}
+        GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
+        USER_EMAIL: ${{ secrets.USER_EMAIL }}
+        USER_PASSWORD: ${{ secrets.USER_PASSWORD }}
+        PYTHONPATH: .
+      run: |
+        python -m utils.pipeline.extract_weekly_activities --start_date $MONDAY_DATE
