@@ -137,16 +137,18 @@ def standardize_activity_types(df):
     return df
 
 TRAINING_RACE_PERIODS = [
-    {'start': '2022-05-02', 'end': '2022-07-15', 'distance': 'Olympic', 'race': 'Magog 2022'},
-    {'start': '2022-05-02', 'end': '2022-09-09', 'distance': 'Olympic', 'race': 'Esprint Montréal 2022'},
-    {'start': '2023-01-06', 'end': '2023-07-14', 'distance': 'Olympic', 'race': 'Magog 2023'},
-    {'start': '2023-01-06', 'end': '2023-08-19', 'distance': '70.3', 'race': 'Mont Tremblant 2023'},
-    {'start': '2023-01-06', 'end': '2023-09-09', 'distance': 'Sprint', 'race': 'Esprint Montréal 2023'},
-    {'start': '2023-01-06', 'end': '2024-06-21', 'distance': 'Olympic', 'race': 'Mont Tremblant 2024'},
-    {'start': '2023-12-04', 'end': '2024-07-13', 'distance': '140.6', 'race': 'Vitoria Gasteiz 2024'},
-    {'start': '2024-12-30', 'end': '2025-09-06', 'distance': '70.3', 'race': 'Santa Cruz 2025'},
-    {'start': '2024-12-30', 'end': '2025-09-20', 'distance': '70.3', 'race': 'Cervia 2025'}, 
-    {'start': '2025-12-29', 'end': '2026-03-28', 'distance': '70.3', 'race': 'Oceanside 2026'}, 
+    {'start': '2022-05-02', 'end': '2022-07-16', 'distance': 'Olympic', 'race': 'Magog 2022'},
+    {'start': '2022-05-02', 'end': '2022-09-10', 'distance': 'Olympic', 'race': 'Esprint Montréal 2022'},
+    {'start': '2023-01-06', 'end': '2023-07-15', 'distance': 'Olympic', 'race': 'Magog 2023'},
+    {'start': '2023-01-06', 'end': '2023-08-20', 'distance': '70.3', 'race': 'Mont Tremblant 2023'},
+    {'start': '2023-01-06', 'end': '2023-09-10', 'distance': 'Sprint', 'race': 'Esprint Montréal 2023'},
+    {'start': '2023-01-06', 'end': '2024-06-22', 'distance': 'Olympic', 'race': 'Mont Tremblant 2024'},
+    {'start': '2023-12-04', 'end': '2024-07-14', 'distance': '140.6', 'race': 'Vitoria Gasteiz 2024'},
+    {'start': '2024-12-30', 'end': '2025-09-07', 'distance': '70.3', 'race': 'Santa Cruz 2025'},
+    {'start': '2024-12-30', 'end': '2025-09-21', 'distance': '70.3', 'race': 'Cervia 2025'},
+    {'start': '2025-09-29', 'end': '2025-12-07', 'distance': '', 'race': 'California International Marathon 2025'},
+    {'start': '2025-12-29', 'end': '2026-03-28', 'distance': '70.3', 'race': 'Oceanside 2026'},
+    {'start': '2026-05-18', 'end': '2026-09-13', 'distance': '70.3', 'race': 'Nice 2026'},
 ]
 
 OFF_SEASON_FALSE_PERIODS = [
@@ -155,6 +157,7 @@ OFF_SEASON_FALSE_PERIODS = [
     {'start': '2023-12-04', 'end': '2024-07-14'},
     {'start': '2024-12-30', 'end': '2025-09-21'}, 
     {'start': '2025-12-29', 'end': '2026-03-29'},
+    {'start': '2026-05-18', 'end': '2026-09-13'},
 ]
 
 def assign_periods(row):
@@ -163,7 +166,7 @@ def assign_periods(row):
     races = []
     off_season = True
     for period in TRAINING_RACE_PERIODS:
-        if pd.to_datetime(period['start']) <= date <= pd.to_datetime(period['end']):
+        if pd.to_datetime(period['start']) <= date < pd.to_datetime(period['end']):
             races.append(period['race'])
     for period in OFF_SEASON_FALSE_PERIODS:
         if pd.to_datetime(period['start']) <= date <= pd.to_datetime(period['end']):

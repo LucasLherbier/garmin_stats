@@ -16,7 +16,22 @@ def show(conn):
     races = TRAINING_RACE_PERIODS[::-1]
 
     # Race Selection
-    race_options = [f"{race['race']} ({race['distance']})" for race in races]
+    race_options = []
+    for race in races:
+        parts = race['race'].rsplit(' ', 1)
+        name = parts[0]
+        year = parts[1] if len(parts) > 1 else ''
+        dist = race['distance']
+        
+        if dist == '70.3':
+            dist_str = "IRONMAN 70.3"
+        elif dist == '140.6':
+            dist_str = "IRONMAN"
+        else:
+            dist_str = dist
+            
+        race_options.append(f"{year} {dist_str} {name}".strip())
+        
     selected_race_display = st.selectbox("Select Target Race", race_options)
     
     # Find the selected race data

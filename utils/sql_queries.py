@@ -76,6 +76,7 @@ def get_weekly_metrics_with_delta_query_overview():
                 ROW_NUMBER() OVER (ORDER BY Week DESC) AS week_rank
             FROM (
                 SELECT DISTINCT Week FROM {ACTIVITIES}
+                WHERE DATE(Week) < DATE_TRUNC(CURRENT_DATE(), WEEK(MONDAY))
             ) w
         ),
         WeeklyMetrics AS (
@@ -98,6 +99,7 @@ def get_weekly_metrics_with_delta_query_overview():
                 SUM(a.vigorousIntensityMinutes) AS total_vigorous_intensity,
                 AVG(a.vigorousIntensityMinutes) AS avg_vigorous_intensity
             FROM {ACTIVITIES} a
+            WHERE DATE(a.startTimeLocal) < DATE_TRUNC(CURRENT_DATE(), WEEK(MONDAY))
             GROUP BY a.activityTypeGrouped, a.Week
         ), 
         data_raw AS (
@@ -163,6 +165,7 @@ def get_weekly_metrics_with_delta_query(sport_type):
                 AVG(vigorousIntensityMinutes) as avg_vigorous_intensity
             FROM {ACTIVITIES}
             WHERE activityTypeGrouped = '{sport_type}'
+            AND DATE(startTimeLocal) < DATE_TRUNC(CURRENT_DATE(), WEEK(MONDAY))
             GROUP BY Week
             ORDER BY Week DESC
             LIMIT 2
@@ -340,6 +343,7 @@ def get_weekly_sport_query(sport_type, timerange, granularity='week'):
                 COALESCE(SUM(a.duration), 0) AS total_duration
             FROM date_series ds
             LEFT JOIN {ACTIVITIES} a ON DATE_TRUNC(DATE(a.startTimeLocal), {time_trunc}) = ds.period
+            WHERE ds.period < DATE_TRUNC(CURRENT_DATE(), {time_trunc})
             GROUP BY ds.period
             ORDER BY ds.period;
         """
@@ -352,6 +356,7 @@ def get_weekly_sport_query(sport_type, timerange, granularity='week'):
         FROM date_series ds
         LEFT JOIN {ACTIVITIES} a ON DATE_TRUNC(DATE(a.startTimeLocal), {time_trunc}) = ds.period
             AND a.activityTypeGrouped = '{sport_type}'
+        WHERE ds.period < DATE_TRUNC(CURRENT_DATE(), {time_trunc})
         GROUP BY ds.period
         ORDER BY ds.period;
     """
@@ -379,6 +384,7 @@ def get_biking_distance_by_timerange_query(timerange):
     FROM date_series ds
     LEFT JOIN {ACTIVITIES} a ON DATE_TRUNC(DATE(a.startTimeLocal), WEEK(MONDAY)) = ds.Week
                           AND a.activityTypeGrouped = 'cycling'
+    WHERE ds.Week < DATE_TRUNC(CURRENT_DATE(), WEEK(MONDAY))
     GROUP BY ds.Week
     ORDER BY ds.Week;
     """
@@ -395,6 +401,7 @@ def get_volume_metrics_query_overview(granularity='week'):
                 DATE_TRUNC(CURRENT_DATE(), {time_trunc}),
                 INTERVAL {interval}
             )) AS period
+            WHERE period < DATE_TRUNC(CURRENT_DATE(), {time_trunc})
         ),
         activity_periods AS (
             SELECT
@@ -408,6 +415,7 @@ def get_volume_metrics_query_overview(granularity='week'):
                 SUM(duration * averageHR) AS total_hr_duration
             FROM {ACTIVITIES}
             WHERE EXTRACT(YEAR FROM startTimeLocal) = EXTRACT(YEAR FROM CURRENT_DATE())
+            AND DATE_TRUNC(DATE(startTimeLocal), {time_trunc}) < DATE_TRUNC(CURRENT_DATE(), {time_trunc})
             GROUP BY period
         ),
         full_periods AS (
@@ -457,6 +465,7 @@ def get_volume_metrics_query(sport, granularity='week'):
                 DATE_TRUNC(CURRENT_DATE(), {time_trunc}),
                 INTERVAL {interval}
             )) AS period
+            WHERE period < DATE_TRUNC(CURRENT_DATE(), {time_trunc})
         ),
         activity_periods AS (
             SELECT
@@ -471,6 +480,7 @@ def get_volume_metrics_query(sport, granularity='week'):
             FROM {ACTIVITIES}
             WHERE activityTypeGrouped = '{sport}'
             AND EXTRACT(YEAR FROM startTimeLocal) = EXTRACT(YEAR FROM CURRENT_DATE())
+            AND DATE_TRUNC(DATE(startTimeLocal), {time_trunc}) < DATE_TRUNC(CURRENT_DATE(), {time_trunc})
             GROUP BY period
         ),
         full_periods AS (
@@ -510,7 +520,7 @@ def get_volume_metrics_query(sport, granularity='week'):
 def get_race_metrics_query(start_date, end_date):
     return f"""
         WITH race_activities AS (
-            SELECT * FROM {ACTIVITIES} WHERE DATE(startTimeLocal) BETWEEN '{start_date}' AND '{end_date}'
+            SELECT * FROM {ACTIVITIES} WHERE DATE(startTimeLocal) >= '{start_date}' AND DATE(startTimeLocal) < '{end_date}'
         ),
         weekly_stats AS (
             SELECT Week, SUM(CASE WHEN activityTypeGrouped = 'swimming' THEN distance ELSE 0 END) AS week_swim_distance, SUM(CASE WHEN activityTypeGrouped = 'cycling' THEN distance ELSE 0 END) AS week_bike_distance, SUM(CASE WHEN activityTypeGrouped = 'running' THEN distance ELSE 0 END) AS week_run_distance, SUM(duration) AS week_duration FROM race_activities GROUP BY Week
@@ -547,8 +557,9 @@ def get_race_distance_by_timerange_query(start_date, end_date, granularity, spor
         SELECT ds.Week AS time_period, COALESCE(SUM(a.distance), 0) AS total_distance
         FROM date_series ds
         LEFT JOIN {ACTIVITIES} a ON DATE_TRUNC(DATE(a.startTimeLocal), WEEK(MONDAY)) = ds.Week
-                               AND DATE(a.startTimeLocal) BETWEEN '{start_date}' AND '{end_date}'
+                               AND DATE(a.startTimeLocal) >= '{start_date}' AND DATE(a.startTimeLocal) < '{end_date}'
                                AND a.activityTypeGrouped = '{sport_type}'
+        WHERE ds.Week < DATE_TRUNC(CURRENT_DATE(), WEEK(MONDAY))
         GROUP BY ds.Week ORDER BY ds.Week;
         """
     else:  # month
@@ -559,16 +570,19 @@ def get_race_distance_by_timerange_query(start_date, end_date, granularity, spor
         SELECT ds.Month AS time_period, COALESCE(SUM(a.distance), 0) AS total_distance
         FROM date_series ds
         LEFT JOIN {ACTIVITIES} a ON DATE_TRUNC(DATE(a.startTimeLocal), MONTH) = ds.Month
-                               AND DATE(a.startTimeLocal) BETWEEN '{start_date}' AND '{end_date}'
+                               AND DATE(a.startTimeLocal) >= '{start_date}' AND DATE(a.startTimeLocal) < '{end_date}'
                                AND a.activityTypeGrouped = '{sport_type}'
+        WHERE ds.Month < DATE_TRUNC(CURRENT_DATE(), MONTH)
         GROUP BY ds.Month ORDER BY ds.Month;
         """
 
 def get_activity_duration_by_granularity_query(start_date, end_date, granularity):
     if granularity == "week":
         time_group = "DATE_TRUNC(DATE(startTimeLocal), WEEK(MONDAY))"
+        limit_date = "DATE_TRUNC(CURRENT_DATE(), WEEK(MONDAY))"
     else: # month
         time_group = "DATE_TRUNC(DATE(startTimeLocal), MONTH)"
+        limit_date = "DATE_TRUNC(CURRENT_DATE(), MONTH)"
     
     return f"""
     SELECT 
@@ -576,7 +590,8 @@ def get_activity_duration_by_granularity_query(start_date, end_date, granularity
         activityTypeGrouped,
         SUM(duration) AS Duration
     FROM {ACTIVITIES}
-    WHERE DATE(startTimeLocal) BETWEEN '{start_date}' AND '{end_date}'
+    WHERE DATE(startTimeLocal) >= '{start_date}' AND DATE(startTimeLocal) < '{end_date}'
+    AND {time_group} < {limit_date}
     GROUP BY TimePeriod, activityTypeGrouped
     ORDER BY TimePeriod
     """

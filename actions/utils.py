@@ -89,15 +89,15 @@ def plot_week_volume(activity_duration_data, granularity):
         y="Duration",
         color="activityTypeGrouped",
         color_discrete_map=sport_colors,
-        template="plotly_dark"
+        template="plotly_dark",
+        custom_data=["FormattedDuration"]
     )
 
     # Modern bar styling
     fig.update_traces(
         marker_line_width=0,
         opacity=0.9,
-        hovertemplate="<b>%{x}</b><br>%{fullData.name}: %{customdata}<extra></extra>",
-        customdata=activity_duration_data["FormattedDuration"]
+        hovertemplate="<b>%{x}</b><br>%{fullData.name}: %{customdata[0]}<extra></extra>"
     )
 
     # Layout enhancements
