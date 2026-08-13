@@ -18,3 +18,4 @@ google-cloud-bigquery-storage
 streamlit-navigation-bar
 streamlit-option-menu
 protobuf>=4.25.3
+google-genai>=1.0.0

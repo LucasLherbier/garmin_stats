@@ -298,3 +298,23 @@ def process_workout_summaries(
     if upload:
         save_workout_summaries(df, replace_existing=replace_existing)
     return df
+
+
+def process_workout_summaries_incremental(activity_ids):
+    """
+    Post-extract / post-preprocess entry point.
+
+    Uses the same pipeline as scripts/backfill_workout_summaries.py (without --force):
+    scoped race periods, skip rows already in workout_summaries, upload new parses.
+    """
+    if activity_ids is None:
+        return pd.DataFrame()
+    unique_ids = sorted({int(activity_id) for activity_id in activity_ids})
+    if not unique_ids:
+        return pd.DataFrame()
+    return process_workout_summaries(
+        activity_ids=unique_ids,
+        skip_existing=True,
+        upload=True,
+        replace_existing=False,
+    )

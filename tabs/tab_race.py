@@ -6,7 +6,88 @@ import plotly.express as px
 import uuid
 from actions import utils as ut
 from actions import utils_ui as ui
+from actions import race_coach
 from utils.pipeline.preprocess_activities import TRAINING_RACE_PERIODS
+
+def _render_workout_coach(conn, race_label, race_data, analysis_end_date, race_metrics):
+    st.subheader("🧠 Prep coach")
+    st.caption(
+        f"LLM: `{race_coach.coach_model()}` · prep index + segment detail for the recent window."
+    )
+
+    prep_df = conn(
+        sql.get_workout_summaries_prep_index_query(race_data["start"], analysis_end_date)
+    )
+    if prep_df.empty:
+        st.info(
+            "No rows in `workout_summaries` for this race window. "
+            "Run `scripts/backfill_workout_summaries.py` or wait for the weekly extract."
+        )
+        return
+
+    ok_count = int((prep_df["parse_status"] == "ok").sum())
+    st.markdown(f"**{ok_count}** parsed workouts in prep index ({len(prep_df)} total rows).")
+
+    lookback = st.selectbox(
+        "Recent detail for narrative",
+        options=[7, 14],
+        index=0,
+        format_func=lambda d: f"Last {d} days",
+        key="race_coach_lookback",
+    )
+    compact_prep = st.checkbox(
+        "Compact prep history (recommended on free Gemini tier)",
+        value=race_coach._env_bool("GEMINI_COMPACT_PREP", True),
+        key="race_coach_compact",
+    )
+    include_segments = st.checkbox(
+        "Include segment blocks in LLM prompt",
+        value=True,
+        key="race_coach_segments",
+        help="Turn off to shrink the prompt if you hit 429 quota errors.",
+    )
+    recent_df = conn(
+        sql.get_workout_summaries_recent_query(
+            race_data["start"], analysis_end_date, lookback_days=lookback
+        )
+    )
+
+    if not recent_df.empty:
+        st.markdown("**Recent sessions** (expand for segments + lap table)")
+        for _, row in recent_df.iterrows():
+            day = pd.to_datetime(row["startTimeLocal"]).strftime("%Y-%m-%d")
+            structure = (row.get("structure_summary") or "").strip()
+            title = f"{day} · {row.get('sport')} · {structure or row.get('activityName')}"
+            with st.expander(title[:140]):
+                if row.get("summary_text"):
+                    st.caption(row["summary_text"])
+                seg_text = race_coach.segments_text_from_row(row)
+                if seg_text:
+                    st.text(seg_text)
+                st.code(race_coach.lap_table_from_row(row), language=None)
+
+    coach_key = f"coach_narrative_{race_data['race']}_{lookback}"
+    if st.button("Generate weekly coach feedback", type="primary", key="race_coach_generate"):
+        with st.spinner("Reading prep block and drafting feedback…"):
+            try:
+                st.session_state[coach_key] = race_coach.generate_coach_narrative(
+                    race_label=race_label,
+                    prep_start=race_data["start"],
+                    prep_end=analysis_end_date,
+                    prep_df=prep_df,
+                    recent_df=recent_df,
+                    race_metrics=race_metrics,
+                    lookback_days=lookback,
+                    compact_prep=compact_prep,
+                    include_segments=include_segments,
+                )
+            except Exception as exc:
+                st.session_state.pop(coach_key, None)
+                st.error(str(exc))
+
+    if coach_key in st.session_state:
+        st.markdown("#### Coach feedback")
+        st.markdown(st.session_state[coach_key])
 
 def show(conn):
     st.title("🎯 Race Preparation")
@@ -68,6 +149,15 @@ def show(conn):
             ui.metric_card("Run Weekly Avg", f"{race_metrics['average_week_distance_run'].iloc[0] or 0:.1f} km", icon="🏁")
 
         st.markdown("---")
+        _render_workout_coach(
+            conn,
+            selected_race_display,
+            selected_race_data,
+            analysis_end_date,
+            race_metrics,
+        )
+
+        st.markdown("---")
         
         # Distance Metrics Table (Restored version)
         st.subheader("📊 Historical Prep Benchmarks")
@@ -108,10 +198,10 @@ def show(conn):
             st.session_state.granularity = 'week'
         
         g_cols = st.columns(4)
-        if g_cols[0].button("📅 Week", use_container_width=True, type="primary" if st.session_state.granularity == 'week' else "secondary"):
+        if g_cols[0].button("📅 Week", width="stretch", type="primary" if st.session_state.granularity == 'week' else "secondary"):
             st.session_state.granularity = 'week'
             st.rerun()
-        if g_cols[1].button("📆 Month", use_container_width=True, type="primary" if st.session_state.granularity == 'month' else "secondary"):
+        if g_cols[1].button("📆 Month", width="stretch", type="primary" if st.session_state.granularity == 'month' else "secondary"):
             st.session_state.granularity = 'month'
             st.rerun()
 
@@ -151,7 +241,7 @@ def show(conn):
                         line=dict(color='rgba(255, 255, 255, 0.1)', width=1)
                     )]
                 )
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width="stretch")
 
         st.markdown("---")
         st.write("### ⏱️ Total Training Load")

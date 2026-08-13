@@ -166,7 +166,7 @@ def plot_week_volume(activity_duration_data, granularity):
         hoverinfo='skip'
     )
 
-    st.plotly_chart(fig, use_container_width=True, key=f"volume_chart_{uuid.uuid4()}")
+    st.plotly_chart(fig, width="stretch", key=f"volume_chart_{uuid.uuid4()}")
 
 def plot_week_area(running_data, y_column, y_title, sport_name, time_range_key):
     """
@@ -206,7 +206,7 @@ def plot_week_area(running_data, y_column, y_title, sport_name, time_range_key):
     fig.update_traces(textposition='top center')
 
     # Render in Streamlit
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
     
     
     
@@ -340,13 +340,13 @@ def paginated_table(
     col1, col2, col3, col4, col5 = st.columns([1, 1, 1, 1, 4])
 
     with col1:
-        if st.button("⏪ First", use_container_width=True,
+        if st.button("⏪ First", width="stretch",
                      disabled=st.session_state[page_key] == 1):
             st.session_state[page_key] = 1
             st.rerun()
 
     with col2:
-        if st.button("← Prev", use_container_width=True,
+        if st.button("← Prev", width="stretch",
                      disabled=st.session_state[page_key] == 1):
             st.session_state[page_key] -= 1
             st.rerun()
@@ -358,13 +358,13 @@ def paginated_table(
         )
 
     with col4:
-        if st.button("Next →", use_container_width=True,
+        if st.button("Next →", width="stretch",
                      disabled=st.session_state[page_key] >= total_pages):
             st.session_state[page_key] += 1
             st.rerun()
 
     with col5:
-        if st.button("Last ⏩", use_container_width=True,
+        if st.button("Last ⏩", width="stretch",
                      disabled=st.session_state[page_key] >= total_pages):
             st.session_state[page_key] = total_pages
             st.rerun()

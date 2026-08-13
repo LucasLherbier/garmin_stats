@@ -74,7 +74,10 @@ The frontend application is built in Streamlit and deployed as a web service via
 | `assign_periods` | Tags each activity with its associated race training period |
 | `save_processed_data` | Uploads processed CSV to GCS + appends to BigQuery `activities` table (with deduplication) |
 
-### 3. Dashboard querying — `utils/sql_queries.py`
+### 3. Workout summaries — `utils/pipeline/workout_summaries/`
+After each weekly extract + preprocess, lap CSVs are parsed into BigQuery **`workout_summaries`** (race-prep scope only). See **[docs/workout_summaries.md](docs/workout_summaries.md)** for CLI, schema, parser version, and coach context strategy.
+
+### 4. Dashboard querying — `utils/sql_queries.py`
 All BigQuery queries are centralized here. The dashboard reads data live from BigQuery via `@st.cache_data` (1-hour TTL) to minimize API calls.
 
 ---
@@ -142,6 +145,7 @@ garmin_stats/
 - A GCP project with BigQuery and Cloud Storage enabled
 - A GCP Service Account key (JSON) with `BigQuery Data Editor` + `Storage Object Admin` roles
 - A Garmin Connect account
+- **Race coach (optional):** `GEMINI_API_KEY` in `.env` or Streamlit secrets. Coach uses **`gemini-3.1-flash-lite`** (`GEMINI_MODEL` optional override).
 
 ## 🛠️ Tech Stack
 

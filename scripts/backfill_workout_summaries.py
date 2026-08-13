@@ -1,4 +1,4 @@
-"""Backfill or incrementally build workout_summaries from GCS lap CSVs."""
+"""CLI for workout_summaries. All parse/upload logic lives in utils.pipeline.workout_summaries.process."""
 
 import argparse
 import json

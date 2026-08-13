@@ -35,7 +35,7 @@ def show(conn):
         # Selection buttons
         v_cols = st.columns(len(dict_columns))
         for i, (key, title) in enumerate(dict_columns.items()):
-            if v_cols[i].button(title, key=f"v_run_{key}", use_container_width=True, 
+            if v_cols[i].button(title, key=f"v_run_{key}", width="stretch", 
                                 type="primary" if st.session_state.run_volume_range == key else "secondary"):
                 st.session_state.run_volume_range = key
                 st.rerun()
@@ -64,7 +64,7 @@ def show(conn):
     tr_cols = st.columns(4)
     ranges = [("4 Weeks", "4_units"), ("6 Weeks", "6_units"), ("YTD", "ytd"), ("All Time", "all")]
     for i, (label, val) in enumerate(ranges):
-        if tr_cols[i].button(label, use_container_width=True, type="primary" if st.session_state.time_range_metrics == val else "secondary"):
+        if tr_cols[i].button(label, width="stretch", type="primary" if st.session_state.time_range_metrics == val else "secondary"):
             st.session_state.time_range_metrics = val
             st.rerun()
 
@@ -145,7 +145,7 @@ def show(conn):
                 df_csv = read_csv_from_gcs(csv_path)
                 # Use a container to slightly reduce width or just plot
                 with st.container():
-                    st.plotly_chart(plot_running_bar(df_csv), use_container_width=True)
+                    st.plotly_chart(plot_running_bar(df_csv), width="stretch")
             
             # TCX Analysis
             tcx_path = f"{gcs_base_path}/{selected_row_id}.tcx"
@@ -162,6 +162,6 @@ def show(conn):
                 fig.add_trace(go.Scatter(x=df_tcx["Time"], y=df_tcx[y1], name=y1, line=dict(color="#ef4444")), secondary_y=False)
                 fig.add_trace(go.Scatter(x=df_tcx["Time"], y=df_tcx[y2], name=y2, line=dict(color="#3b82f6")), secondary_y=True)
                 fig.update_layout(height=400, template="plotly_dark", hovermode="x unified")
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width="stretch")
     else:
         st.info("No running activities found.")
