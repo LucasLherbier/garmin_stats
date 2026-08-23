@@ -88,10 +88,10 @@ def show(conn):
     
     # Granularity Toggle (Week/Month)
     g_cols = st.columns(2)
-    if g_cols[0].button("📅 Week", key="week_toggle_main", use_container_width=True, type="primary" if st.session_state.granularity == 'week' else "secondary"):
+    if g_cols[0].button("📅 Week", key="week_toggle_main", width="stretch", type="primary" if st.session_state.granularity == 'week' else "secondary"):
         st.session_state.granularity = 'week'
         st.rerun()
-    if g_cols[1].button("📆 Month", key="month_toggle_main", use_container_width=True, type="primary" if st.session_state.granularity == 'month' else "secondary"):
+    if g_cols[1].button("📆 Month", key="month_toggle_main", width="stretch", type="primary" if st.session_state.granularity == 'month' else "secondary"):
         st.session_state.granularity = 'month'
         st.rerun()
 
@@ -101,7 +101,7 @@ def show(conn):
     s_cols = st.columns(len(sport_options))
     for i, sport_opt in enumerate(sport_options):
         label = f"{sport_icon_map[sport_opt]} {sport_display_map[sport_opt]}"
-        if s_cols[i].button(label, key=f"sport_btn_{sport_opt}", use_container_width=True, type="primary" if st.session_state.sport == sport_opt else "secondary"):
+        if s_cols[i].button(label, key=f"sport_btn_{sport_opt}", width="stretch", type="primary" if st.session_state.sport == sport_opt else "secondary"):
             st.session_state.sport = sport_opt
             st.rerun()
 
@@ -122,7 +122,7 @@ def show(conn):
     ]
     
     for i, (label, val) in enumerate(ranges):
-        if tr_cols[i].button(label, key=f"tr_btn_{val}", use_container_width=True, type="primary" if st.session_state.time_range_metrics == val else "secondary"):
+        if tr_cols[i].button(label, key=f"tr_btn_{val}", width="stretch", type="primary" if st.session_state.time_range_metrics == val else "secondary"):
             st.session_state.time_range_metrics = val
             st.rerun()
 

@@ -5,6 +5,7 @@ load_dotenv()
 DATASET = os.getenv('GCP_DATASET_ID', 'garmin_stats')
 ACTIVITIES = f"`{DATASET}.activities`"
 RACES = f"`{DATASET}.races`"
+WORKOUT_SUMMARIES = f"`{DATASET}.workout_summaries`"
 
 def get_top_metrics_query(filter_condition):
     # Note: filter_condition must be BQ compatible (e.g. using DATE() for Day)
@@ -618,4 +619,119 @@ def activities_stats():
             waterEstimated,
             activityTypeGrouped
         FROM {ACTIVITIES}
+    """
+
+def get_workout_summaries_prep_index_query(start_date, end_date):
+    """Lightweight prep catalog for coach context (all scoped summaries in race window)."""
+    return f"""
+        SELECT
+            activityId,
+            startTimeLocal,
+            sport,
+            activityName,
+            duration,
+            distance,
+            averageHR,
+            structure_summary,
+            parse_status
+        FROM {WORKOUT_SUMMARIES}
+        WHERE DATE(startTimeLocal) >= '{start_date}'
+          AND DATE(startTimeLocal) < '{end_date}'
+        ORDER BY startTimeLocal ASC
+    """
+
+def get_workout_summaries_recent_query(start_date, end_date, lookback_days=7):
+    """Recent workouts with segment detail for weekly coach pass."""
+    return f"""
+        SELECT
+            activityId,
+            startTimeLocal,
+            sport,
+            activityName,
+            duration,
+            distance,
+            averageHR,
+            structure_summary,
+            summary_text,
+            segments,
+            lap_analysis,
+            parse_status
+        FROM {WORKOUT_SUMMARIES}
+        WHERE parse_status = 'ok'
+          AND DATE(startTimeLocal) >= GREATEST(DATE('{start_date}'), DATE_SUB(DATE('{end_date}'), INTERVAL {int(lookback_days)} DAY))
+          AND DATE(startTimeLocal) < '{end_date}'
+        ORDER BY startTimeLocal DESC
+    """
+
+def get_workout_summary_detail_query(activity_id):
+    return f"""
+        SELECT
+            activityId,
+            startTimeLocal,
+            sport,
+            activityName,
+            structure_summary,
+            summary_text,
+            segments,
+            lap_analysis,
+            laps,
+            parse_status
+        FROM {WORKOUT_SUMMARIES}
+        WHERE activityId = {int(activity_id)}
+        LIMIT 1
+    """
+
+def get_activities_by_date_query(selected_date):
+    return f"""
+        SELECT
+            a.activityId,
+            a.activityName,
+            a.activityTypeGrouped,
+            a.startTimeLocal,
+            a.duration,
+            a.distance,
+            a.calories,
+            a.averageHR,
+            a.maxHR,
+            a.elevationGain,
+            a.averageSpeed,
+            ws.sport AS summary_sport,
+            ws.parse_status,
+            ws.summary_text
+        FROM {ACTIVITIES} a
+        LEFT JOIN {WORKOUT_SUMMARIES} ws ON a.activityId = ws.activityId
+        WHERE DATE(a.startTimeLocal) = DATE('{selected_date}')
+        ORDER BY a.startTimeLocal ASC
+    """
+
+def get_activity_report_query(activity_id):
+    return f"""
+        SELECT
+            a.activityId,
+            a.activityName,
+            a.activityTypeGrouped,
+            a.startTimeLocal,
+            a.duration,
+            a.distance,
+            a.calories,
+            a.averageHR,
+            a.maxHR,
+            a.minHR,
+            a.elevationGain,
+            a.averageSpeed,
+            a.maxSpeed,
+            a.averageRunCadence,
+            a.averageSwolf,
+            a.locationName,
+            a.trainingEffectLabel,
+            ws.sport,
+            ws.structure_summary,
+            ws.summary_text,
+            ws.segments,
+            ws.laps,
+            ws.parse_status
+        FROM {ACTIVITIES} a
+        LEFT JOIN {WORKOUT_SUMMARIES} ws ON a.activityId = ws.activityId
+        WHERE a.activityId = {int(activity_id)}
+        LIMIT 1
     """

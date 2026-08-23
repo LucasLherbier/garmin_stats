@@ -15,6 +15,7 @@ import tabs.tab_race as tab_race
 import tabs.tab_overview as tab_overview
 import tabs.tab_stats as tab_stats
 import tabs.tab_races_results as tab_races_results
+import tabs.tab_report as tab_report
 
 # Set page config
 st.set_page_config(
@@ -47,55 +48,59 @@ def main():
     st.markdown("<div class='garmin-title-divider'></div>", unsafe_allow_html=True)
     
     # Navigation buttons
-    nav_options = ["Stats", "Overview", "Run", "Swim", "Bike", "Race", "Results"]
-    icons = ["bar-chart-line-fill", "grid-3x3-gap-fill", "speedometer2", "water", "bicycle", "flag-fill", "trophy-fill"]
+    nav_options = ["Stats", "Overview", "Run", "Swim", "Bike", "Race", "Results", "Report"]
+    icons = [
+        "bar-chart-line-fill", "grid-3x3-gap-fill", "speedometer2", "water",
+        "bicycle", "flag-fill", "trophy-fill", "file-earmark-text",
+    ]
+    nav_styles = {
+        "menu": {
+            "background-color": "transparent !important",
+        },
+        "nav": {
+            "background-color": "transparent !important",
+        },
+        "container": {
+            "padding": "5px !important",
+            "background-color": "rgba(15, 23, 42, 0.4)",
+            "border-radius": "18px",
+            "border": "1px solid rgba(255, 255, 255, 0.1)",
+            "backdrop-filter": "blur(20px)",
+            "width": "100%",
+            "margin": "0 auto",
+        },
+        "icon": {"color": "#fdb927", "font-size": "17px"},
+        "nav-link": {
+            "font-family": "'Inter', 'Segoe UI', sans-serif",
+            "font-size": "16px",
+            "font-weight": "500",
+            "text-transform": "none",
+            "letter-spacing": "0",
+            "color": "#94a3b8",
+            "border-radius": "14px",
+            "transition": "all 0.3s ease",
+        },
+        "nav-link-selected": {
+            "font-family": "'Inter', 'Segoe UI', sans-serif",
+            "background": "linear-gradient(135deg, #551e82 0%, #3d1560 100%)",
+            "color": "#ffffff",
+            "font-weight": "600",
+            "text-transform": "none",
+            "letter-spacing": "0",
+            "text-shadow": "0 2px 4px rgba(0,0,0,0.3)",
+            "box-shadow": "0 8px 15px rgba(85, 30, 130, 0.35)",
+            "border": "1px solid #fdb927",
+        },
+    }
 
     selected_tab = option_menu(
         menu_title=None,
         options=nav_options,
         icons=icons,
-        menu_icon="cast", 
-        default_index=0, 
+        menu_icon="cast",
+        default_index=0,
         orientation="horizontal",
-        styles={
-            "menu": {
-                "background-color": "transparent !important",
-            },
-            "nav": {
-                "background-color": "transparent !important", # Removes inner black bars
-            },
-            "container": {
-                "padding": "5px !important", 
-                "background-color": "rgba(15, 23, 42, 0.4)", # Your glass effect
-                "border-radius": "18px",
-                "border": "1px solid rgba(255, 255, 255, 0.1)",
-                "backdrop-filter": "blur(20px)",
-                "width": "100%",          
-                "margin": "0 auto"
-            },
-            "icon": {"color": "#fdb927", "font-size": "17px"}, 
-            "nav-link": {
-                "font-family": "'Inter', 'Segoe UI', sans-serif",
-                "font-size": "16px", 
-                "font-weight": "500",
-                "text-transform": "none",
-                "letter-spacing": "0",
-                "color": "#94a3b8",
-                "border-radius": "14px",
-                "transition": "all 0.3s ease",
-            },
-            "nav-link-selected": {
-                "font-family": "'Inter', 'Segoe UI', sans-serif",
-                "background": "linear-gradient(135deg, #551e82 0%, #3d1560 100%)",
-                "color": "#ffffff",
-                "font-weight": "600",
-                "text-transform": "none",
-                "letter-spacing": "0",
-                "text-shadow": "0 2px 4px rgba(0,0,0,0.3)",
-                "box-shadow": "0 8px 15px rgba(85, 30, 130, 0.35)",
-                "border": "1px solid #fdb927",
-            },
-        }
+        styles=nav_styles,
     )
 
     # --- Sidebar ---
@@ -106,7 +111,8 @@ def main():
             <div class='pro-tips-content'>
             • Click <b>Activities</b> in tables to see detailed telemetry.<br><br>
             • Use the <b>Stats</b> tab for all-time records across sports.<br><br>
-            • <b>Race Training</b> tracks your progress toward specific goals.
+            • <b>Race Training</b> tracks your progress toward specific goals.<br><br>
+            • <b>Report</b> builds mobile HTML summaries from lap splits.
             </div>
             """, unsafe_allow_html=True)
 
@@ -126,7 +132,8 @@ def main():
         tab_stats.show(query_bigquery)
     elif selected_tab == "Results":
         tab_races_results.show(query_bigquery)
+    elif selected_tab == "Report":
+        tab_report.show(query_bigquery)
 
 if __name__ == "__main__":
     main()
-

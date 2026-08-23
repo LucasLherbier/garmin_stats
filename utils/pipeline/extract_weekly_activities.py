@@ -4,6 +4,7 @@ import pandas as pd
 import sqlite3
 from utils.pipeline.connect_to_garmin import connect_to_garmin
 from utils.pipeline.preprocess_activities import main_preprocess
+from utils.pipeline.workout_summaries.process import process_workout_summaries_incremental
 from datetime import datetime, timedelta
 import argparse
 from time import sleep
@@ -173,7 +174,19 @@ def process_date_range(start_date):
         try:
             df = extract_weekly_activities(client, last_week_date_str, execution_date_str)
             if df is not None and not df.empty:
-                main_preprocess(last_week_date_str, df)
+                processed_df = main_preprocess(last_week_date_str, df)
+                summary_df = process_workout_summaries_incremental(
+                    processed_df["activityId"].tolist()
+                )
+                if summary_df.empty:
+                    logger.info("Workout summaries: nothing new (out of scope, skipped, or no lap CSV).")
+                else:
+                    by_status = summary_df.groupby("parse_status").size()
+                    logger.info(
+                        "Workout summaries: parsed %s (%s)",
+                        len(summary_df),
+                        by_status.to_dict(),
+                    )
             else:
                 logger.info(f"No activities to process for week ending {execution_date_str}")
         except Exception as e:

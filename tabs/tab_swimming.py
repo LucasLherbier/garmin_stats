@@ -30,7 +30,7 @@ def show(conn):
         # Selection buttons
         v_cols = st.columns(len(dict_columns))
         for i, (key, title) in enumerate(dict_columns.items()):
-            if v_cols[i].button(title, key=f"v_swim_{key}", use_container_width=True, 
+            if v_cols[i].button(title, key=f"v_swim_{key}", width="stretch", 
                                 type="primary" if st.session_state.swim_volume_range == key else "secondary"):
                 st.session_state.swim_volume_range = key
                 st.rerun()
@@ -54,7 +54,7 @@ def show(conn):
     tr_cols = st.columns(4)
     ranges = [("4 Weeks", "4_units"), ("6 Weeks", "6_units"), ("YTD", "ytd"), ("All Time", "all")]
     for i, (label, val) in enumerate(ranges):
-        if tr_cols[i].button(label, use_container_width=True, type="primary" if st.session_state.time_range_metrics == val else "secondary"):
+        if tr_cols[i].button(label, width="stretch", type="primary" if st.session_state.time_range_metrics == val else "secondary"):
             st.session_state.time_range_metrics = val
             st.rerun()
 
@@ -87,7 +87,7 @@ def show(conn):
             "activityName": "Activity Name",
         }
 
-        paginated_df, selected_index = ut.paginated_table(
+        paginated_df, selected_page_row, selected_row = ut.paginated_table(
             df=swimming_table,
             display_columns=display_columns,
             column_configuration=column_configuration,
@@ -95,9 +95,9 @@ def show(conn):
             session_key="swimming_list",
         )
 
-        if selected_index is not None:
-            selected_row_data = paginated_df.iloc[selected_index]
-            selected_row_id = swimming_table.iloc[selected_index]["activityId"]
+        if selected_row is not None:
+            selected_row_data = paginated_df.iloc[selected_page_row]
+            selected_row_id = swimming_table.iloc[selected_row]["activityId"]
 
             st.markdown(f"#### 🔎 Activity Details: {selected_row_data.get('Activity Name')}")
 
@@ -116,13 +116,13 @@ def show(conn):
                 df = read_csv_from_gcs(gcs_csv_path)
                 if df is not None:
                     df = parse_swimming_csv(df)
-                    st.plotly_chart(plot_swimming_bar(df), use_container_width=True)
+                    st.plotly_chart(plot_swimming_bar(df), width="stretch")
 
                     st.write("#### Split Details")
                     main_splits = df[~df['Split'].astype(str).str.contains(r'\.') & ~df['IsRest']]
                     cols_keep = ['Split','Swim Stroke','Distance','Time','Avg Pace', 'Avg HR','Total Strokes','Calories']
                     cols_to_select = [c for c in cols_keep if c in main_splits.columns]
                     main_splits = main_splits[cols_to_select].reset_index(drop=True)
-                    st.dataframe(main_splits, use_container_width=True)
+                    st.dataframe(main_splits, width="stretch")
     else:
         st.info("No swimming activities found.")

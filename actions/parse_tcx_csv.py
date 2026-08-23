@@ -92,11 +92,21 @@ def parse_tcx_to_dataframe(tcx_input):
             speed_elem = extensions_elem.find('ns3:Speed', ns)
             speeds.append(float(speed_elem.text) if speed_elem is not None else np.nan)
 
-            cadence_elem = extensions_elem.find('ns3:RunCadence', ns)
+            cadence_elem = (
+                extensions_elem.find("ns3:BikeCadence", ns)
+                or extensions_elem.find("ns3:RunCadence", ns)
+                or extensions_elem.find("ns3:Cadence", ns)
+            )
             cadences.append(int(cadence_elem.text) if cadence_elem is not None else np.nan)
 
-            watt_elem = extensions_elem.find('ns3:Watts', ns)
-            watts.append(int(watt_elem.text) if watt_elem is not None else np.nan)
+            watt_elem = extensions_elem.find("ns3:Watts", ns)
+            if watt_elem is None:
+                for child in extensions_elem:
+                    local = child.tag.split("}")[-1]
+                    if local.lower() == "watts":
+                        watt_elem = child
+                        break
+            watts.append(float(watt_elem.text) if watt_elem is not None else np.nan)
         else:
             speeds.append(np.nan)
             cadences.append(np.nan)

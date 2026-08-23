@@ -185,7 +185,7 @@ def show_activity_detail(activity_id, df_stats, conn):
         fig.add_trace(go.Scatter(x=df_tcx["Time"], y=df_tcx[y1], name=y1, line=dict(color="#ef4444")), secondary_y=False)
         fig.add_trace(go.Scatter(x=df_tcx["Time"], y=df_tcx[y2], name=y2, line=dict(color="#10b981")), secondary_y=True)
         fig.update_layout(height=400, template="plotly_dark", hovermode="x unified")
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
 def show(conn):
     df_stats = conn(sql.activities_stats())
@@ -225,11 +225,11 @@ def show(conn):
     
     col1, col2 = st.columns([1, 1])
     with col1:
-        if st.button("⏱ Duration", use_container_width=True, type="primary" if st.session_state.metric_choice == "duration" else "secondary"):
+        if st.button("⏱ Duration", width="stretch", type="primary" if st.session_state.metric_choice == "duration" else "secondary"):
             st.session_state.metric_choice = "duration"
             st.rerun()
     with col2:
-        if st.button("📏 Distance", use_container_width=True, type="primary" if st.session_state.metric_choice == "distance" else "secondary"):
+        if st.button("📏 Distance", width="stretch", type="primary" if st.session_state.metric_choice == "distance" else "secondary"):
             st.session_state.metric_choice = "distance"
             st.rerun()
 
@@ -290,8 +290,9 @@ def show(conn):
             "locationName": "Location",
         }
 
-        paginated_df, selected_row = ut.paginated_table(
-            df=df_display.sort_values("Label", ascending=True),
+        sorted_stats = df_display.sort_values("Label", ascending=True)
+        paginated_df, selected_page_row, selected_row = ut.paginated_table(
+            df=sorted_stats,
             display_columns=display_columns,
             column_configuration=column_configuration,
             page_size=5,
@@ -300,7 +301,7 @@ def show(conn):
         
         if selected_row is not None:
             # Update detail from table selection
-            table_act_id = df_display.sort_values("Label", ascending=True).iloc[selected_row]['activityId']
+            table_act_id = sorted_stats.iloc[selected_row]['activityId']
             if table_act_id != st.session_state.selected_activity_id:
                 st.session_state.selected_activity_id = table_act_id
                 st.rerun()
