@@ -192,9 +192,7 @@ def log_to_bigquery(activity_id, name_file, path_file, status):
 
 import streamlit as st
 
-@st.cache_data(ttl=3600)  # Cache results for 1 hour to improve performance
-def query_bigquery(query):
-    """Execute a BigQuery query and return a pandas DataFrame."""
+def _run_bigquery(query):
     if bq_client is None:
         logger.error("BigQuery client not initialized.")
         return pd.DataFrame()
@@ -204,6 +202,17 @@ def query_bigquery(query):
     except Exception as e:
         logger.error(f"BigQuery Query Error: {e}")
         return pd.DataFrame()
+
+
+@st.cache_data(ttl=3600)  # Cache results for 1 hour to improve performance
+def query_bigquery(query):
+    """Execute a BigQuery query and return a pandas DataFrame."""
+    return _run_bigquery(query)
+
+
+def query_bigquery_live(query):
+    """Uncached BigQuery query (e.g. workout_summaries after backfill)."""
+    return _run_bigquery(query)
 
 
 

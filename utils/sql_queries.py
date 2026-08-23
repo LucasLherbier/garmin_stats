@@ -680,3 +680,58 @@ def get_workout_summary_detail_query(activity_id):
         WHERE activityId = {int(activity_id)}
         LIMIT 1
     """
+
+def get_activities_by_date_query(selected_date):
+    return f"""
+        SELECT
+            a.activityId,
+            a.activityName,
+            a.activityTypeGrouped,
+            a.startTimeLocal,
+            a.duration,
+            a.distance,
+            a.calories,
+            a.averageHR,
+            a.maxHR,
+            a.elevationGain,
+            a.averageSpeed,
+            ws.sport AS summary_sport,
+            ws.parse_status,
+            ws.summary_text
+        FROM {ACTIVITIES} a
+        LEFT JOIN {WORKOUT_SUMMARIES} ws ON a.activityId = ws.activityId
+        WHERE DATE(a.startTimeLocal) = DATE('{selected_date}')
+        ORDER BY a.startTimeLocal ASC
+    """
+
+def get_activity_report_query(activity_id):
+    return f"""
+        SELECT
+            a.activityId,
+            a.activityName,
+            a.activityTypeGrouped,
+            a.startTimeLocal,
+            a.duration,
+            a.distance,
+            a.calories,
+            a.averageHR,
+            a.maxHR,
+            a.minHR,
+            a.elevationGain,
+            a.averageSpeed,
+            a.maxSpeed,
+            a.averageRunCadence,
+            a.averageSwolf,
+            a.locationName,
+            a.trainingEffectLabel,
+            ws.sport,
+            ws.structure_summary,
+            ws.summary_text,
+            ws.segments,
+            ws.laps,
+            ws.parse_status
+        FROM {ACTIVITIES} a
+        LEFT JOIN {WORKOUT_SUMMARIES} ws ON a.activityId = ws.activityId
+        WHERE a.activityId = {int(activity_id)}
+        LIMIT 1
+    """

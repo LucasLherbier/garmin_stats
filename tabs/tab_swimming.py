@@ -87,7 +87,7 @@ def show(conn):
             "activityName": "Activity Name",
         }
 
-        paginated_df, selected_index = ut.paginated_table(
+        paginated_df, selected_page_row, selected_row = ut.paginated_table(
             df=swimming_table,
             display_columns=display_columns,
             column_configuration=column_configuration,
@@ -95,9 +95,9 @@ def show(conn):
             session_key="swimming_list",
         )
 
-        if selected_index is not None:
-            selected_row_data = paginated_df.iloc[selected_index]
-            selected_row_id = swimming_table.iloc[selected_index]["activityId"]
+        if selected_row is not None:
+            selected_row_data = paginated_df.iloc[selected_page_row]
+            selected_row_id = swimming_table.iloc[selected_row]["activityId"]
 
             st.markdown(f"#### 🔎 Activity Details: {selected_row_data.get('Activity Name')}")
 

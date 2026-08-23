@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 
 import pandas as pd
 
@@ -24,6 +25,8 @@ from utils.pipeline.workout_summaries.lap_analysis import (
 )
 from utils.pipeline.workout_summaries.segments import detect_segments
 from utils.pipeline.workout_summaries.structure_summary import build_main_structure_summary
+from utils.pipeline.workout_summaries.structure_summary_llm import build_structure_summary_llm
+from utils.gemini_client import get_api_key
 from google.cloud import bigquery
 
 from utils.utils_gcp import (
@@ -36,6 +39,37 @@ from utils.utils_gcp import (
 )
 
 logger = logging.getLogger(__name__)
+
+LLM_STRUCTURE_SPORTS = {"running", "cycling"}
+
+
+def _use_llm_structure_summary() -> bool:
+    if os.getenv("STRUCTURE_SUMMARY_LLM", "1").strip().lower() in ("0", "false", "no", "off"):
+        return False
+    return get_api_key() is not None
+
+
+def _build_structure_summary(
+    sport: str,
+    activity_row,
+    segments,
+    laps,
+    lap_analysis,
+    phases,
+) -> tuple[str | None, str]:
+    heuristic = build_main_structure_summary(segments, sport, activity_row, laps, phases)
+    if sport not in LLM_STRUCTURE_SPORTS or not _use_llm_structure_summary() or not laps:
+        return heuristic, "heuristic"
+    summary, source = build_structure_summary_llm(
+        sport,
+        activity_row,
+        lap_analysis,
+        segments,
+        laps=laps,
+        phases=phases,
+        fallback=True,
+    )
+    return summary, source
 
 TABLE_NAME = "workout_summaries"
 
@@ -201,8 +235,8 @@ def process_activity_row(activity_row):
     else:
         lap_analysis = []
     phases = [row["phase"] for row in lap_analysis] if lap_analysis else None
-    structure_summary = build_main_structure_summary(
-        segments, detected_sport, activity_row, laps, phases
+    structure_summary, structure_summary_source = _build_structure_summary(
+        detected_sport, activity_row, segments, laps, lap_analysis, phases
     )
     summary_text = build_summary_text(activity_row, laps, detected_sport)
     if structure_summary:
@@ -213,6 +247,7 @@ def process_activity_row(activity_row):
             "sport": detected_sport,
             "summary_text": summary_text,
             "structure_summary": structure_summary,
+            "structure_summary_source": structure_summary_source,
             "workout_type": workout_type,
             "workout_type_source": workout_type_source,
             "laps": laps_to_json(laps),

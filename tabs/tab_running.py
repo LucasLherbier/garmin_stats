@@ -99,7 +99,7 @@ def show(conn):
             'activityName': 'Activity Name',
         }
         
-        paginated_df, selected_row = ut.paginated_table(
+        paginated_df, selected_page_row, selected_row = ut.paginated_table(
             df=running_table,
             display_columns=display_columns,
             column_configuration=column_configuration,
@@ -108,7 +108,7 @@ def show(conn):
         )
                 
         if selected_row is not None:
-            selected_row_data = paginated_df.iloc[selected_row]
+            selected_row_data = paginated_df.iloc[selected_page_row]
             # Handle potential differences in key naming between dataframe and paginated table
             raw_row = running_table.iloc[selected_row]
             selected_row_id = raw_row['activityId']

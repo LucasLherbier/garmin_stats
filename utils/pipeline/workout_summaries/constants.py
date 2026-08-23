@@ -1,6 +1,6 @@
 """Scope and constants for workout summary parsing."""
 
-PARSER_VERSION = "1.8"
+PARSER_VERSION = "1.9"
 
 SUPPORTED_SPORTS = {"swimming", "cycling", "running"}
 

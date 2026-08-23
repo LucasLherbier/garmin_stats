@@ -290,8 +290,9 @@ def show(conn):
             "locationName": "Location",
         }
 
-        paginated_df, selected_row = ut.paginated_table(
-            df=df_display.sort_values("Label", ascending=True),
+        sorted_stats = df_display.sort_values("Label", ascending=True)
+        paginated_df, selected_page_row, selected_row = ut.paginated_table(
+            df=sorted_stats,
             display_columns=display_columns,
             column_configuration=column_configuration,
             page_size=5,
@@ -300,7 +301,7 @@ def show(conn):
         
         if selected_row is not None:
             # Update detail from table selection
-            table_act_id = df_display.sort_values("Label", ascending=True).iloc[selected_row]['activityId']
+            table_act_id = sorted_stats.iloc[selected_row]['activityId']
             if table_act_id != st.session_state.selected_activity_id:
                 st.session_state.selected_activity_id = table_act_id
                 st.rerun()

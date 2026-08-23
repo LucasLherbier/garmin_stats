@@ -11,6 +11,11 @@ _ROOT = Path(__file__).resolve().parents[1]
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
+from dotenv import load_dotenv
+
+load_dotenv(_ROOT / ".env")
+
+from utils.gemini_client import get_api_key
 from utils.pipeline.workout_summaries.process import process_workout_summaries
 from utils.pipeline.workout_summaries.lap_analysis import format_lap_table
 from utils.pipeline.workout_summaries.segments import format_segments_for_log
@@ -29,7 +34,7 @@ def main():
         help="Process only these Garmin activity IDs.",
     )
     parser.add_argument(
-        "--since",
+        "--start_date",
         help="Include activities on or after this date (YYYY-MM-DD).",
     )
     parser.add_argument(
@@ -39,7 +44,7 @@ def main():
     parser.add_argument(
         "--last-year",
         action="store_true",
-        help="Shorthand for --since 365 days ago (still limited to configured race periods).",
+        help="Shorthand for --start_date 365 days ago (still limited to configured race periods).",
     )
     parser.add_argument(
         "--force",
@@ -62,18 +67,26 @@ def main():
         logger.error("GCS bucket is not configured or inaccessible.")
         sys.exit(1)
 
-    since = args.since
+    start_date = args.start_date
     until = args.until or datetime.now().strftime("%Y-%m-%d")
     if args.last_year:
-        since = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
-    if since:
-        logger.info("Date filter: %s to %s (plus race-period scope).", since, until)
+        start_date = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
+    if start_date:
+        logger.info("Date filter: %s to %s (plus race-period scope).", start_date, until)
+
+    if get_api_key():
+        logger.info("structure_summary: LLM enabled (GEMINI_API_KEY set).")
+    else:
+        logger.warning(
+            "structure_summary: LLM disabled — no GEMINI_API_KEY; using heuristic only. "
+            "Use --force to replace rows after adding the key."
+        )
 
     df = process_workout_summaries(
         activity_ids=args.activity_ids,
         skip_existing=not args.force,
         upload=not args.dry_run,
-        since=since,
+        since=start_date,
         until=until,
         replace_existing=args.force and not args.dry_run,
     )
@@ -92,7 +105,7 @@ def main():
                 row["summary_text"],
             )
             if row.get("structure_summary"):
-                logger.info("Main structure: %s", row["structure_summary"])
+                logger.info("Main structure (%s): %s", row.get("structure_summary_source", "?"), row["structure_summary"])
             if row.get("lap_analysis"):
                 la = json.loads(row["lap_analysis"]) if isinstance(row["lap_analysis"], str) else row["lap_analysis"]
                 if la:
@@ -104,6 +117,9 @@ def main():
     else:
         by_status = df.groupby("parse_status").size()
         logger.info("Parsed %s activities: %s", len(df), by_status.to_dict())
+        if "structure_summary_source" in df.columns:
+            by_source = df["structure_summary_source"].value_counts().to_dict()
+            logger.info("structure_summary sources: %s", by_source)
 
     if args.dry_run:
         logger.info("Dry run complete — %s row(s) parsed, not uploaded.", len(df))

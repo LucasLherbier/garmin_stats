@@ -248,6 +248,11 @@ def paginated_table(
 ):
     """
     Reusable paginated dataframe component.
+
+    Returns:
+        paginated_df: current page (renamed display columns)
+        page_index: selected row index on the current page (for paginated_df.iloc)
+        global_index: selected row index in the input df (for df.iloc)
     """
     # Debug: Check Streamlit version
     # st.sidebar.info(f"Streamlit Version: {st.__version__}")
@@ -369,4 +374,5 @@ def paginated_table(
             st.session_state[page_key] = total_pages
             st.rerun()
 
-    return paginated_df, selected_index
+    global_index = start + selected_index if selected_index is not None else None
+    return paginated_df, selected_index, global_index

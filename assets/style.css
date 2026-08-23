@@ -163,6 +163,20 @@ iframe[src*="streamlit_option_menu"] {
     background-color: transparent !important;
 }
 
+.nav-upload-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 52px;
+}
+
+.nav-upload-wrap div[data-testid="stButton"] > button {
+    width: 100%;
+    min-height: 42px;
+    border-radius: 14px !important;
+    font-weight: 600 !important;
+}
+
 /* App Header Styles */
 .garmin-title-spacer {
     margin-top: 50px;
