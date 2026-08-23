@@ -382,9 +382,12 @@ def _comparison_row(name: str, agg: dict[str, Any], sport: str) -> dict[str, str
     if sport == "cycling":
         return {
             "List": name,
+            "Dist": _n(agg.get("distance_km"), "{:.1f}"),
             "Time": agg.get("time") or "—",
             "NP": _n(agg.get("avg_np_w"), "{:.0f}"),
             "HR": _n(agg.get("avg_hr"), "{:.0f}"),
+            "Cad": _n(agg.get("avg_cadence"), "{:.0f}"),
+            "Elev": _n(agg.get("elevation_gain_m"), "{:.0f}"),
         }
 
     if sport == "running":
