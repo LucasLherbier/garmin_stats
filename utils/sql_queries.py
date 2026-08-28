@@ -6,6 +6,7 @@ DATASET = os.getenv('GCP_DATASET_ID', 'garmin_stats')
 ACTIVITIES = f"`{DATASET}.activities`"
 RACES = f"`{DATASET}.races`"
 WORKOUT_SUMMARIES = f"`{DATASET}.workout_summaries`"
+DAILY_WELLNESS = f"`{DATASET}.daily_wellness`"
 
 def get_top_metrics_query(filter_condition):
     # Note: filter_condition must be BQ compatible (e.g. using DATE() for Day)
@@ -457,6 +458,9 @@ def get_volume_metrics_query_overview(granularity='week'):
 def get_volume_metrics_query(sport, granularity='week'):
     time_trunc = "WEEK(MONDAY)" if granularity == 'week' else "MONTH"
     interval = "7 DAY" if granularity == 'week' else "1 MONTH"
+    extra_metrics = """,
+                CAST(SUM(total_swolf_duration) / NULLIF(SUM(swolf_duration), 0) AS INT64) AS averageSwolf,
+                CAST(SUM(total_np_duration) / NULLIF(SUM(np_duration), 0) AS INT64) AS avgNpW"""
     
     return f"""
         WITH time_series AS (
@@ -468,20 +472,35 @@ def get_volume_metrics_query(sport, granularity='week'):
             )) AS period
             WHERE period < DATE_TRUNC(CURRENT_DATE(), {time_trunc})
         ),
+        activity_np AS (
+            SELECT
+                ws.activityId,
+                AVG(SAFE_CAST(JSON_VALUE(lap, '$.normalized_power_w') AS FLOAT64)) AS avg_np_w
+            FROM {WORKOUT_SUMMARIES} ws,
+            UNNEST(JSON_QUERY_ARRAY(ws.laps)) AS lap
+            WHERE ws.parse_status = 'ok'
+              AND JSON_VALUE(lap, '$.normalized_power_w') IS NOT NULL
+            GROUP BY ws.activityId
+        ),
         activity_periods AS (
             SELECT
-                DATE_TRUNC(DATE(startTimeLocal), {time_trunc}) AS period,
-                SUM(duration) AS duration,
+                DATE_TRUNC(DATE(a.startTimeLocal), {time_trunc}) AS period,
+                SUM(a.duration) AS duration,
                 COUNT(*) AS nb_trainings,
-                SUM(distance) AS distance,
-                SUM(calories) AS calories,
-                SUM(elevationGain) AS elevationGain,
-                SUM(totalNumberOfStrokes) AS totalNumberOfStrokes,
-                SUM(duration * averageHR) AS total_hr_duration
-            FROM {ACTIVITIES}
-            WHERE activityTypeGrouped = '{sport}'
-            AND EXTRACT(YEAR FROM startTimeLocal) = EXTRACT(YEAR FROM CURRENT_DATE())
-            AND DATE_TRUNC(DATE(startTimeLocal), {time_trunc}) < DATE_TRUNC(CURRENT_DATE(), {time_trunc})
+                SUM(a.distance) AS distance,
+                SUM(a.calories) AS calories,
+                SUM(a.elevationGain) AS elevationGain,
+                SUM(a.totalNumberOfStrokes) AS totalNumberOfStrokes,
+                SUM(a.duration * a.averageHR) AS total_hr_duration,
+                SUM(CASE WHEN a.averageSwolf > 0 THEN a.duration * a.averageSwolf ELSE 0 END) AS total_swolf_duration,
+                SUM(CASE WHEN a.averageSwolf > 0 THEN a.duration ELSE 0 END) AS swolf_duration,
+                SUM(CASE WHEN np.avg_np_w > 0 THEN a.duration * np.avg_np_w ELSE 0 END) AS total_np_duration,
+                SUM(CASE WHEN np.avg_np_w > 0 THEN a.duration ELSE 0 END) AS np_duration
+            FROM {ACTIVITIES} a
+            LEFT JOIN activity_np np ON a.activityId = np.activityId
+            WHERE a.activityTypeGrouped = '{sport}'
+            AND EXTRACT(YEAR FROM a.startTimeLocal) = EXTRACT(YEAR FROM CURRENT_DATE())
+            AND DATE_TRUNC(DATE(a.startTimeLocal), {time_trunc}) < DATE_TRUNC(CURRENT_DATE(), {time_trunc})
             GROUP BY period
         ),
         full_periods AS (
@@ -494,6 +513,10 @@ def get_volume_metrics_query(sport, granularity='week'):
                 COALESCE(ap.elevationGain, 0) AS elevationGain,
                 COALESCE(ap.totalNumberOfStrokes, 0) AS totalNumberOfStrokes,
                 COALESCE(ap.total_hr_duration, 0) AS total_hr_duration,
+                COALESCE(ap.total_swolf_duration, 0) AS total_swolf_duration,
+                COALESCE(ap.swolf_duration, 0) AS swolf_duration,
+                COALESCE(ap.total_np_duration, 0) AS total_np_duration,
+                COALESCE(ap.np_duration, 0) AS np_duration,
                 RANK() OVER (ORDER BY ts.period DESC) AS rank_period
             FROM time_series ts
             LEFT JOIN activity_periods ap ON ts.period = ap.period
@@ -507,15 +530,15 @@ def get_volume_metrics_query(sport, granularity='week'):
                 COUNT(*) AS call
             FROM full_periods
         )
-        SELECT 'last_1' AS name, SUM(duration) AS duration_total, SUM(duration)/NULLIF((SELECT c1 FROM counts), 0) AS duration_avg, SUM(nb_trainings) AS nb_trainings, SUM(distance) AS distance_total, SUM(distance)/NULLIF((SELECT c1 FROM counts), 0) AS distance_avg, SUM(calories) AS calories, SUM(elevationGain) AS elevationGain, SUM(totalNumberOfStrokes) AS totalNumberOfStrokes, CAST(SUM(total_hr_duration) / NULLIF(SUM(duration),0) AS INT64) AS averageHR FROM full_periods WHERE rank_period <= 1
+        SELECT 'last_1' AS name, SUM(duration) AS duration_total, SUM(duration)/NULLIF((SELECT c1 FROM counts), 0) AS duration_avg, SUM(nb_trainings) AS nb_trainings, SUM(distance) AS distance_total, SUM(distance)/NULLIF((SELECT c1 FROM counts), 0) AS distance_avg, SUM(calories) AS calories, SUM(elevationGain) AS elevationGain, SUM(totalNumberOfStrokes) AS totalNumberOfStrokes, CAST(SUM(total_hr_duration) / NULLIF(SUM(duration),0) AS INT64) AS averageHR{extra_metrics} FROM full_periods WHERE rank_period <= 1
         UNION ALL
-        SELECT 'last_4' AS name, SUM(duration) AS duration_total, SUM(duration)/NULLIF((SELECT c4 FROM counts), 0) AS duration_avg, SUM(nb_trainings) AS nb_trainings, SUM(distance) AS distance_total, SUM(distance)/NULLIF((SELECT c4 FROM counts), 0) AS distance_avg, SUM(calories) AS calories, SUM(elevationGain) AS elevationGain, SUM(totalNumberOfStrokes) AS totalNumberOfStrokes, CAST(SUM(total_hr_duration) / NULLIF(SUM(duration),0) AS INT64) AS averageHR FROM full_periods WHERE rank_period <= 4
+        SELECT 'last_4' AS name, SUM(duration) AS duration_total, SUM(duration)/NULLIF((SELECT c4 FROM counts), 0) AS duration_avg, SUM(nb_trainings) AS nb_trainings, SUM(distance) AS distance_total, SUM(distance)/NULLIF((SELECT c4 FROM counts), 0) AS distance_avg, SUM(calories) AS calories, SUM(elevationGain) AS elevationGain, SUM(totalNumberOfStrokes) AS totalNumberOfStrokes, CAST(SUM(total_hr_duration) / NULLIF(SUM(duration),0) AS INT64) AS averageHR{extra_metrics} FROM full_periods WHERE rank_period <= 4
         UNION ALL
-        SELECT 'last_12' AS name, SUM(duration) AS duration_total, SUM(duration)/NULLIF((SELECT c12 FROM counts), 0) AS duration_avg, SUM(nb_trainings) AS nb_trainings, SUM(distance) AS distance_total, SUM(distance)/NULLIF((SELECT c12 FROM counts), 0) AS distance_avg, SUM(calories) AS calories, SUM(elevationGain) AS elevationGain, SUM(totalNumberOfStrokes) AS totalNumberOfStrokes, CAST(SUM(total_hr_duration) / NULLIF(SUM(duration),0) AS INT64) AS averageHR FROM full_periods WHERE rank_period <= 12
+        SELECT 'last_12' AS name, SUM(duration) AS duration_total, SUM(duration)/NULLIF((SELECT c12 FROM counts), 0) AS duration_avg, SUM(nb_trainings) AS nb_trainings, SUM(distance) AS distance_total, SUM(distance)/NULLIF((SELECT c12 FROM counts), 0) AS distance_avg, SUM(calories) AS calories, SUM(elevationGain) AS elevationGain, SUM(totalNumberOfStrokes) AS totalNumberOfStrokes, CAST(SUM(total_hr_duration) / NULLIF(SUM(duration),0) AS INT64) AS averageHR{extra_metrics} FROM full_periods WHERE rank_period <= 12
         UNION ALL
-        SELECT 'last_18' AS name, SUM(duration) AS duration_total, SUM(duration)/NULLIF((SELECT c18 FROM counts), 0) AS duration_avg, SUM(nb_trainings) AS nb_trainings, SUM(distance) AS distance_total, SUM(distance)/NULLIF((SELECT c18 FROM counts), 0) AS distance_avg, SUM(calories) AS calories, SUM(elevationGain) AS elevationGain, SUM(totalNumberOfStrokes) AS totalNumberOfStrokes, CAST(SUM(total_hr_duration) / NULLIF(SUM(duration),0) AS INT64) AS averageHR FROM full_periods WHERE rank_period <= 18
+        SELECT 'last_18' AS name, SUM(duration) AS duration_total, SUM(duration)/NULLIF((SELECT c18 FROM counts), 0) AS duration_avg, SUM(nb_trainings) AS nb_trainings, SUM(distance) AS distance_total, SUM(distance)/NULLIF((SELECT c18 FROM counts), 0) AS distance_avg, SUM(calories) AS calories, SUM(elevationGain) AS elevationGain, SUM(totalNumberOfStrokes) AS totalNumberOfStrokes, CAST(SUM(total_hr_duration) / NULLIF(SUM(duration),0) AS INT64) AS averageHR{extra_metrics} FROM full_periods WHERE rank_period <= 18
         UNION ALL
-        SELECT 'last_all' AS name, SUM(duration) AS duration_total, SUM(duration)/NULLIF((SELECT call FROM counts), 0) AS duration_avg, SUM(nb_trainings) AS nb_trainings, SUM(distance) AS distance_total, SUM(distance)/NULLIF((SELECT call FROM counts), 0) AS distance_avg, SUM(calories) AS calories, SUM(elevationGain) AS elevationGain, SUM(totalNumberOfStrokes) AS totalNumberOfStrokes, CAST(SUM(total_hr_duration) / NULLIF(SUM(duration),0) AS INT64) AS averageHR FROM full_periods;
+        SELECT 'last_all' AS name, SUM(duration) AS duration_total, SUM(duration)/NULLIF((SELECT call FROM counts), 0) AS duration_avg, SUM(nb_trainings) AS nb_trainings, SUM(distance) AS distance_total, SUM(distance)/NULLIF((SELECT call FROM counts), 0) AS distance_avg, SUM(calories) AS calories, SUM(elevationGain) AS elevationGain, SUM(totalNumberOfStrokes) AS totalNumberOfStrokes, CAST(SUM(total_hr_duration) / NULLIF(SUM(duration),0) AS INT64) AS averageHR{extra_metrics} FROM full_periods;
     """
 
 def get_race_metrics_query(start_date, end_date):
@@ -524,24 +547,51 @@ def get_race_metrics_query(start_date, end_date):
             SELECT * FROM {ACTIVITIES} WHERE DATE(startTimeLocal) >= '{start_date}' AND DATE(startTimeLocal) < '{end_date}'
         ),
         weekly_stats AS (
-            SELECT Week, SUM(CASE WHEN activityTypeGrouped = 'swimming' THEN distance ELSE 0 END) AS week_swim_distance, SUM(CASE WHEN activityTypeGrouped = 'cycling' THEN distance ELSE 0 END) AS week_bike_distance, SUM(CASE WHEN activityTypeGrouped = 'running' THEN distance ELSE 0 END) AS week_run_distance, SUM(duration) AS week_duration FROM race_activities GROUP BY Week
+            SELECT Week,
+                SUM(CASE WHEN activityTypeGrouped = 'swimming' THEN distance ELSE 0 END) AS week_swim_distance,
+                SUM(CASE WHEN activityTypeGrouped = 'cycling' THEN distance ELSE 0 END) AS week_bike_distance,
+                SUM(CASE WHEN activityTypeGrouped = 'running' THEN distance ELSE 0 END) AS week_run_distance,
+                SUM(duration) AS week_duration,
+                COUNT(*) AS week_sessions,
+                SUM(elevationGain) AS week_elevation
+            FROM race_activities
+            GROUP BY Week
         ),
         monthly_stats AS (
             SELECT SUM(CASE WHEN activityTypeGrouped = 'swimming' THEN distance ELSE 0 END)/30.44 AS month_swim_distance, SUM(CASE WHEN activityTypeGrouped = 'cycling' THEN distance ELSE 0 END)/30.44 AS month_bike_distance, SUM(CASE WHEN activityTypeGrouped = 'running' THEN distance ELSE 0 END)/30.44 AS month_run_distance FROM race_activities
         ),
         last_8_weeks AS (
-            SELECT AVG(week_duration) AS avg_duration_8w, AVG(week_swim_distance) AS avg_8w_swim, AVG(week_bike_distance) AS avg_8w_bike, AVG(week_run_distance) AS avg_8w_run FROM (SELECT week_duration, week_swim_distance, week_bike_distance, week_run_distance FROM weekly_stats ORDER BY Week DESC LIMIT 8 OFFSET 1)
+            SELECT
+                AVG(week_duration) AS avg_duration_8w,
+                AVG(week_swim_distance) AS avg_8w_swim,
+                AVG(week_bike_distance) AS avg_8w_bike,
+                AVG(week_run_distance) AS avg_8w_run,
+                AVG(week_sessions) AS avg_8w_sessions,
+                AVG(week_elevation) AS avg_8w_elevation
+            FROM (
+                SELECT week_duration, week_swim_distance, week_bike_distance, week_run_distance, week_sessions, week_elevation
+                FROM weekly_stats
+                ORDER BY Week DESC
+                LIMIT 8 OFFSET 1
+            )
         )
         SELECT
+            COALESCE((SELECT SUM(duration) FROM race_activities), 0) AS total_duration,
+            COALESCE((SELECT COUNT(*) FROM race_activities), 0) AS total_sessions,
+            COALESCE((SELECT SUM(elevationGain) FROM race_activities), 0) AS total_elevation,
             COALESCE((SELECT SUM(distance) FROM race_activities WHERE activityTypeGrouped = 'swimming'), 0) AS total_distance_swim,
             COALESCE((SELECT SUM(distance) FROM race_activities WHERE activityTypeGrouped = 'cycling'), 0) AS total_distance_bike,
             COALESCE((SELECT SUM(distance) FROM race_activities WHERE activityTypeGrouped = 'running'), 0) AS total_distance_run,
             COALESCE((SELECT AVG(week_swim_distance) FROM weekly_stats), 0) AS average_week_distance_swim,
             COALESCE((SELECT AVG(week_bike_distance) FROM weekly_stats), 0) AS average_week_distance_bike,
             COALESCE((SELECT AVG(week_run_distance) FROM weekly_stats), 0) AS average_week_distance_run,
+            COALESCE((SELECT AVG(week_sessions) FROM weekly_stats), 0) AS average_week_sessions,
+            COALESCE((SELECT AVG(week_elevation) FROM weekly_stats), 0) AS average_week_elevation,
             COALESCE((SELECT avg_8w_swim FROM last_8_weeks), 0) AS average_8week_distance_swim,
             COALESCE((SELECT avg_8w_bike FROM last_8_weeks), 0) AS average_8week_distance_bike,
             COALESCE((SELECT avg_8w_run FROM last_8_weeks), 0) AS average_8week_distance_run,
+            COALESCE((SELECT avg_8w_sessions FROM last_8_weeks), 0) AS average_8week_sessions,
+            COALESCE((SELECT avg_8w_elevation FROM last_8_weeks), 0) AS average_8week_elevation,
             COALESCE((SELECT AVG(month_swim_distance) FROM monthly_stats), 0) AS average_month_distance_swim,
             COALESCE((SELECT AVG(month_bike_distance) FROM monthly_stats), 0) AS average_month_distance_bike,
             COALESCE((SELECT AVG(month_run_distance) FROM monthly_stats), 0) AS average_month_distance_run,
@@ -576,6 +626,114 @@ def get_race_distance_by_timerange_query(start_date, end_date, granularity, spor
         WHERE ds.Month < DATE_TRUNC(CURRENT_DATE(), MONTH)
         GROUP BY ds.Month ORDER BY ds.Month;
         """
+
+def get_race_wellness_by_granularity_query(start_date, end_date, granularity):
+    if granularity == "week":
+        time_trunc = "WEEK(MONDAY)"
+        interval = "7 DAY"
+        period_alias = "Week"
+    else:
+        time_trunc = "MONTH"
+        interval = "1 MONTH"
+        period_alias = "Month"
+
+    return f"""
+    WITH date_series AS (
+        SELECT period AS {period_alias}
+        FROM UNNEST(GENERATE_DATE_ARRAY(
+            DATE_TRUNC(DATE('{start_date}'), {time_trunc}),
+            DATE_TRUNC(DATE('{end_date}'), {time_trunc}),
+            INTERVAL {interval}
+        )) AS period
+    ),
+    wellness_daily AS (
+        SELECT *
+        FROM {DAILY_WELLNESS}
+        WHERE day >= DATE('{start_date}')
+          AND day <= DATE('{end_date}')
+          AND extract_status IN ('ok', 'partial')
+    ),
+    wellness_periods AS (
+        SELECT
+            DATE_TRUNC(day, {time_trunc}) AS time_period,
+            AVG(sleep_score) AS avg_sleep_score,
+            AVG(hrv_last_night_avg) AS avg_hrv,
+            AVG(resting_hr) AS avg_resting_hr,
+            AVG(body_battery_high) AS avg_body_battery_high,
+            AVG(body_battery_low) AS avg_body_battery_low,
+            AVG(avg_stress) AS avg_stress,
+            AVG(sleep_duration_sec) AS avg_sleep_duration_sec,
+            COUNT(*) AS day_count
+        FROM wellness_daily
+        GROUP BY time_period
+    )
+    SELECT
+        ds.{period_alias} AS time_period,
+        wp.avg_sleep_score,
+        wp.avg_hrv,
+        wp.avg_resting_hr,
+        wp.avg_body_battery_high,
+        wp.avg_body_battery_low,
+        wp.avg_stress,
+        wp.avg_sleep_duration_sec,
+        COALESCE(wp.day_count, 0) AS day_count
+    FROM date_series ds
+    LEFT JOIN wellness_periods wp ON ds.{period_alias} = wp.time_period
+    WHERE ds.{period_alias} < DATE_TRUNC(CURRENT_DATE(), {time_trunc})
+    ORDER BY ds.{period_alias};
+    """
+
+
+def get_race_activities_query(start_date, end_date, sport_types):
+    if len(sport_types) == 1:
+        sport_filter = f"act.activityTypeGrouped = '{sport_types[0]}'"
+    else:
+        joined = "', '".join(sport_types)
+        sport_filter = f"act.activityTypeGrouped IN ('{joined}')"
+
+    return f"""
+        SELECT
+            DATE(act.startTimeLocal) AS Day,
+            act.activityTypeGrouped,
+            act.activityId,
+            ROUND(act.distance, 2) AS distance,
+            act.duration,
+            act.calories,
+            act.averageHR,
+            act.maxHR,
+            ROUND(act.averageSpeed * 3.6, 2) AS averageSpeed,
+            act.elevationGain,
+            act.trainingEffectLabel,
+            act.startTimeLocal,
+            act.locationName,
+            act.activityName
+        FROM {ACTIVITIES} act
+        WHERE DATE(act.startTimeLocal) >= '{start_date}'
+          AND DATE(act.startTimeLocal) < '{end_date}'
+          AND {sport_filter}
+        ORDER BY act.startTimeLocal DESC;
+    """
+
+
+def get_activity_heatmap_query(sport_filter_sql: str) -> str:
+    """Activity counts for current week by weekday (Mon=0) and time slot (AM/PM/EV)."""
+    return f"""
+        SELECT
+            MOD(EXTRACT(DAYOFWEEK FROM startTimeLocal) + 5, 7) AS dow,
+            CASE
+                WHEN EXTRACT(HOUR FROM startTimeLocal) < 12 THEN 'AM'
+                WHEN EXTRACT(HOUR FROM startTimeLocal) < 18 THEN 'PM'
+                ELSE 'EV'
+            END AS slot,
+            COUNT(*) AS activity_count
+        FROM {ACTIVITIES}
+        WHERE DATE_TRUNC(DATE(startTimeLocal), WEEK(MONDAY)) = DATE_TRUNC(CURRENT_DATE(), WEEK(MONDAY))
+          AND DATE(startTimeLocal) <= CURRENT_DATE()
+          AND ({sport_filter_sql})
+        GROUP BY dow, slot
+        ORDER BY dow, slot
+    """
+
 
 def get_activity_duration_by_granularity_query(start_date, end_date, granularity):
     if granularity == "week":

@@ -268,14 +268,40 @@ def build_workout_summaries(activity_ids=None, skip_existing=True, since=None, u
         return pd.DataFrame()
 
     existing_ids = existing_summary_ids(activities["activityId"].tolist()) if skip_existing else set()
+    to_process = len(activities) - len(existing_ids) if skip_existing else len(activities)
+    if to_process:
+        logger.info("Processing %s activities…", to_process)
+
     skipped = 0
+    processed = 0
     rows = []
     for _, activity_row in activities.iterrows():
         activity_id = int(activity_row["activityId"])
         if activity_id in existing_ids:
             skipped += 1
             continue
-        rows.append(process_activity_row(activity_row))
+        processed += 1
+        day = pd.to_datetime(activity_row["startTimeLocal"]).strftime("%Y-%m-%d")
+        sport = activity_row.get("sport") or "?"
+        logger.info(
+            "[%s/%s] %s | %s | %s",
+            processed,
+            to_process,
+            day,
+            sport,
+            activity_id,
+        )
+        row = process_activity_row(activity_row)
+        summary = (row.get("structure_summary") or "")[:100]
+        if len((row.get("structure_summary") or "")) > 100:
+            summary += "…"
+        logger.info(
+            "  → %s | %s | %s",
+            row.get("parse_status"),
+            row.get("structure_summary_source", "—"),
+            summary or "—",
+        )
+        rows.append(row)
 
     if skipped:
         logger.info("Skipped %s activities already in workout_summaries.", skipped)

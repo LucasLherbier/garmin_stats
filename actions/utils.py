@@ -103,7 +103,7 @@ def plot_week_volume(activity_duration_data, granularity):
     # Layout enhancements
     fig.update_layout(
         title=dict(
-            text=f"Total Volume ({granularity.capitalize()})",
+            text="Total Volume",
             font=dict(size=20, family="Outfit")
         ),
         plot_bgcolor='rgba(255, 255, 255, 0.03)',

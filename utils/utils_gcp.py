@@ -1,6 +1,8 @@
 import os
 import io
 import logging
+from datetime import timedelta
+from functools import lru_cache
 import pandas as pd
 from google.cloud import storage, bigquery
 from google.cloud.exceptions import NotFound
@@ -19,12 +21,14 @@ load_dotenv()
 gcs_client = None
 bq_client = None
 bucket = None
+_gcs_credentials = None
+REPORT_SHARE_EXPIRY_DAYS = int(os.getenv("REPORT_SHARE_EXPIRY_DAYS", "30"))
 GCP_PROJECT_ID = os.getenv('GCP_PROJECT_ID', '').strip('"').strip("'") or None
 GCP_DATASET_ID = os.getenv('GCP_DATASET_ID', 'garmin_stats').strip('"').strip("'")
 GCP_BUCKET_NAME = os.getenv('GCP_BUCKET_NAME', '').strip('"').strip("'") or None
 
 def initialize_clients():
-    global gcs_client, bq_client, bucket, GCP_PROJECT_ID
+    global gcs_client, bq_client, bucket, GCP_PROJECT_ID, _gcs_credentials
     
     try:
         credentials = None
@@ -49,6 +53,7 @@ def initialize_clients():
 
         # Initialize clients
         if credentials:
+            _gcs_credentials = credentials
             gcs_client = storage.Client(credentials=credentials, project=GCP_PROJECT_ID)
             bq_client = bigquery.Client(credentials=credentials, project=GCP_PROJECT_ID)
         else:
@@ -56,6 +61,10 @@ def initialize_clients():
             gcs_client = storage.Client()
             bq_client = bigquery.Client()
             logger.info("GCP Clients: Using default credentials")
+            try:
+                _gcs_credentials = gcs_client._credentials
+            except Exception:
+                _gcs_credentials = None
 
         if gcs_client and GCP_BUCKET_NAME:
             bucket = gcs_client.bucket(GCP_BUCKET_NAME)
@@ -127,6 +136,127 @@ def upload_to_bigquery(df, table_name):
         logger.error(f"BigQuery Error: {e}")
         return False
 
+
+def _table_id(table_name: str) -> str:
+    table_id = f"{GCP_PROJECT_ID}.{GCP_DATASET_ID}.{table_name}"
+    if "." in GCP_DATASET_ID:
+        table_id = GCP_DATASET_ID if table_name in GCP_DATASET_ID else f"{GCP_DATASET_ID}.{table_name}"
+    return table_id
+
+
+DAILY_WELLNESS_SCHEMA = [
+    bigquery.SchemaField("day", "DATE"),
+    bigquery.SchemaField("sleep_score", "INT64"),
+    bigquery.SchemaField("sleep_duration_sec", "INT64"),
+    bigquery.SchemaField("sleep_deep_sec", "INT64"),
+    bigquery.SchemaField("sleep_light_sec", "INT64"),
+    bigquery.SchemaField("sleep_rem_sec", "INT64"),
+    bigquery.SchemaField("sleep_awake_sec", "INT64"),
+    bigquery.SchemaField("hrv_last_night_avg", "FLOAT64"),
+    bigquery.SchemaField("hrv_status", "STRING"),
+    bigquery.SchemaField("hrv_weekly_avg", "FLOAT64"),
+    bigquery.SchemaField("resting_hr", "INT64"),
+    bigquery.SchemaField("daily_steps", "INT64"),
+    bigquery.SchemaField("daily_calories", "INT64"),
+    bigquery.SchemaField("body_battery_high", "INT64"),
+    bigquery.SchemaField("body_battery_low", "INT64"),
+    bigquery.SchemaField("avg_stress", "INT64"),
+    bigquery.SchemaField("activity_count", "INT64"),
+    bigquery.SchemaField("total_duration_sec", "INT64"),
+    bigquery.SchemaField("total_calories", "INT64"),
+    bigquery.SchemaField("swim_distance_km", "FLOAT64"),
+    bigquery.SchemaField("bike_distance_km", "FLOAT64"),
+    bigquery.SchemaField("run_distance_km", "FLOAT64"),
+    bigquery.SchemaField("elevation_gain_m", "FLOAT64"),
+    bigquery.SchemaField("extract_status", "STRING"),
+    bigquery.SchemaField("extract_errors", "STRING"),
+    bigquery.SchemaField("extracted_at", "TIMESTAMP"),
+]
+
+_DAILY_WELLNESS_INT_COLS = [
+    field.name for field in DAILY_WELLNESS_SCHEMA if field.field_type == "INT64"
+]
+_DAILY_WELLNESS_FLOAT_COLS = [
+    field.name for field in DAILY_WELLNESS_SCHEMA if field.field_type == "FLOAT64"
+]
+
+
+def _prepare_daily_wellness_df(df: pd.DataFrame) -> pd.DataFrame:
+    upload_df = df.copy()
+    upload_df["day"] = pd.to_datetime(upload_df["day"], errors="coerce").dt.date
+
+    for col in _DAILY_WELLNESS_INT_COLS:
+        if col not in upload_df.columns:
+            continue
+        upload_df[col] = pd.to_numeric(upload_df[col], errors="coerce").apply(
+            lambda value: None if pd.isna(value) else int(value)
+        )
+
+    for col in _DAILY_WELLNESS_FLOAT_COLS:
+        if col not in upload_df.columns:
+            continue
+        upload_df[col] = pd.to_numeric(upload_df[col], errors="coerce").astype(float)
+
+    if "extracted_at" in upload_df.columns:
+        upload_df["extracted_at"] = pd.to_datetime(upload_df["extracted_at"], errors="coerce", utc=True)
+
+    schema_cols = [field.name for field in DAILY_WELLNESS_SCHEMA]
+    for col in schema_cols:
+        if col not in upload_df.columns:
+            upload_df[col] = None
+    extra_cols = [col for col in upload_df.columns if col not in schema_cols]
+    return upload_df[schema_cols + extra_cols]
+
+
+def drop_daily_wellness_table(table_name: str = "daily_wellness") -> bool:
+    if bq_client is None:
+        logger.warning("Client not initialized.")
+        return False
+    try:
+        table_id = _table_id(table_name)
+        bq_client.delete_table(table_id, not_found_ok=True)
+        logger.info("Dropped table %s.", table_id)
+        return True
+    except Exception as e:
+        logger.error("Failed to drop daily_wellness table: %s", e)
+        return False
+
+
+def merge_daily_wellness_to_bigquery(df: pd.DataFrame, table_name: str = "daily_wellness") -> bool:
+    """Upsert daily wellness rows keyed by calendar day."""
+    if bq_client is None or df.empty:
+        logger.warning("Client not initialized or DataFrame is empty.")
+        return False
+
+    try:
+        table_id = _table_id(table_name)
+        upload_df = _prepare_daily_wellness_df(df)
+
+        days = sorted({str(day)[:10] for day in upload_df["day"].dropna().tolist()})
+        delete_query = f"DELETE FROM `{table_id}` WHERE CAST(day AS STRING) IN UNNEST(@days)"
+        delete_config = bigquery.QueryJobConfig(
+            query_parameters=[bigquery.ArrayQueryParameter("days", "STRING", days)]
+        )
+        try:
+            bq_client.get_table(table_id)
+            bq_client.query(delete_query, job_config=delete_config).result()
+            logger.info("Removed %s existing daily_wellness row(s) before upsert.", len(days))
+        except NotFound:
+            logger.info("Table %s not found. It will be created on upload.", table_id)
+
+        job_config = bigquery.LoadJobConfig(
+            write_disposition="WRITE_APPEND",
+            schema=DAILY_WELLNESS_SCHEMA,
+            schema_update_options=[bigquery.SchemaUpdateOption.ALLOW_FIELD_ADDITION],
+        )
+        job = bq_client.load_table_from_dataframe(upload_df, table_id, job_config=job_config)
+        job.result()
+        logger.info("Upserted %s row(s) into %s.", len(upload_df), table_id)
+        return True
+    except Exception as e:
+        logger.error(f"Daily wellness BigQuery Error: {e}")
+        return False
+
 def log_to_bigquery(activity_id, name_file, path_file, status):
     """Log activity processing status to BigQuery 'logs' table using MERGE (UPSERT)."""
     if bq_client is None:
@@ -190,8 +320,6 @@ def log_to_bigquery(activity_id, name_file, path_file, status):
         logger.error(f"BigQuery Log Error: {msg}")
         return False
 
-import streamlit as st
-
 def _run_bigquery(query):
     if bq_client is None:
         logger.error("BigQuery client not initialized.")
@@ -204,17 +332,41 @@ def _run_bigquery(query):
         return pd.DataFrame()
 
 
-@st.cache_data(ttl=3600)  # Cache results for 1 hour to improve performance
-def query_bigquery(query):
-    """Execute a BigQuery query and return a pandas DataFrame."""
+@lru_cache(maxsize=64)
+def query_bigquery(query: str):
+    """Execute a BigQuery query and return a pandas DataFrame (cached by query text)."""
     return _run_bigquery(query)
 
 
-def query_bigquery_live(query):
+def query_bigquery_live(query: str):
     """Uncached BigQuery query (e.g. workout_summaries after backfill)."""
     return _run_bigquery(query)
 
 
+
+
+def publish_report_html(html: str, activity_id: int, date_str: str) -> str | None:
+    """Upload an activity HTML report and return a signed HTTPS URL for sharing."""
+    if bucket is None:
+        logger.warning("Bucket not initialized. Cannot publish report.")
+        return None
+    gcs_path = f"reports/{activity_id}/report_{date_str}.html"
+    try:
+        blob = bucket.blob(gcs_path)
+        blob.upload_from_string(html, content_type="text/html; charset=utf-8")
+        blob.cache_control = "public, max-age=3600"
+        blob.patch()
+        sign_kwargs: dict = {
+            "version": "v4",
+            "expiration": timedelta(days=REPORT_SHARE_EXPIRY_DAYS),
+            "method": "GET",
+        }
+        if _gcs_credentials is not None:
+            sign_kwargs["credentials"] = _gcs_credentials
+        return blob.generate_signed_url(**sign_kwargs)
+    except Exception as e:
+        logger.error(f"Failed to publish report HTML: {e}")
+        return None
 
 
 def save_to_gcs(data, gcs_path, content_type='application/octet-stream'):

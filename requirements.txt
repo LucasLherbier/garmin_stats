@@ -1,13 +1,11 @@
-streamlit>=1.55.0
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
 pandas>=2.0.0
 garminconnect
 garminexport
 requests
 sqlite-utils
 plotly
-folium
-streamlit-folium
-branca
 python-dotenv
 google-cloud-storage
 google-cloud-bigquery
@@ -15,8 +13,6 @@ pyarrow>=14.0.1
 db-dtypes
 pandas-gbq
 google-cloud-bigquery-storage
-streamlit-navigation-bar
-streamlit-option-menu
 protobuf>=4.25.3
 google-genai>=1.0.0
 fitparse>=1.2.0

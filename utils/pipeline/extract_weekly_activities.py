@@ -5,6 +5,7 @@ import sqlite3
 from utils.pipeline.connect_to_garmin import connect_to_garmin
 from utils.pipeline.preprocess_activities import main_preprocess
 from utils.pipeline.workout_summaries.process import process_workout_summaries_incremental
+from utils.pipeline.daily_wellness.process import process_daily_wellness
 from datetime import datetime, timedelta
 import argparse
 from time import sleep
@@ -189,6 +190,16 @@ def process_date_range(start_date):
                     )
             else:
                 logger.info(f"No activities to process for week ending {execution_date_str}")
+
+            wellness_df = process_daily_wellness(
+                client,
+                last_week_date_str,
+                execution_date_str,
+            )
+            if wellness_df.empty:
+                logger.info("Daily wellness: nothing fetched for this week.")
+            else:
+                logger.info("Daily wellness: upserted %s day(s).", len(wellness_df))
         except Exception as e:
             logger.error(f"Error processing week ending {execution_date_str}: {e}")
 

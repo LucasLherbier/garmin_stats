@@ -1,38 +1,20 @@
-# ── Base image ────────────────────────────────────────────────────────────────
+FROM node:22-slim AS frontend-build
+WORKDIR /app/frontend
+COPY frontend/package*.json ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build
+
 FROM python:3.11-slim
-
-# ── System dependencies ────────────────────────────────────────────────────────
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        build-essential \
-        curl \
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
-
-# ── Working directory ──────────────────────────────────────────────────────────
 WORKDIR /app
-
-# ── Python dependencies (cached layer) ────────────────────────────────────────
 COPY requirements.txt .
 RUN pip install --no-cache-dir --root-user-action=ignore -r requirements.txt
-
-# ── Application code ───────────────────────────────────────────────────────────
 COPY . .
-
-# ── Streamlit configuration ────────────────────────────────────────────────────
-# Disable the "welcome" banner and set a fixed port
-ENV STREAMLIT_SERVER_PORT=8501
-ENV STREAMLIT_SERVER_ADDRESS=0.0.0.0
-ENV STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
-ENV STREAMLIT_SERVER_HEADLESS=true
-
-# ── Expose the Streamlit port ──────────────────────────────────────────────────
-EXPOSE 8501
-
-# ── Health check ──────────────────────────────────────────────────────────────
-HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
-    CMD curl -f http://localhost:8501/_stcore/health || exit 1
-
-# ── Entrypoint ─────────────────────────────────────────────────────────────────
-CMD ["streamlit", "run", "app.py", \
-     "--server.port=8501", \
-     "--server.address=0.0.0.0", \
-     "--server.headless=true"]
+COPY --from=frontend-build /app/frontend/dist ./frontend/dist
+ENV PORT=8000
+EXPOSE 8000
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
+    CMD curl -f http://localhost:8000/api/health || exit 1
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]

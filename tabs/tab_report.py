@@ -1,9 +1,18 @@
+import os
+import secrets
+
 import streamlit as st
 import pandas as pd
 from datetime import date
 
 from utils import sql_queries as sql
-from utils.utils_gcp import query_bigquery_live, check_gcs_path_exists, bucket
+from utils.utils_gcp import (
+    query_bigquery_live,
+    check_gcs_path_exists,
+    bucket,
+    publish_report_html,
+    REPORT_SHARE_EXPIRY_DAYS,
+)
 from utils.github_actions import trigger_weekly_sync
 from actions.parse_tcx_csv import parse_tcx_to_dataframe
 from actions.power_curve import power_profile_from_fit, power_profile_from_telemetry
@@ -19,12 +28,27 @@ from actions.report_html import build_activity_report_html, build_list_aggregate
 from actions.report_map import gpx_track_points
 
 
+def _verify_sync_password(password: str) -> str | None:
+    expected = os.getenv("UPLOAD_TO_GITHUB", "").strip()
+    if not expected:
+        return "Sync is not configured. Set UPLOAD_TO_GITHUB in the environment."
+    if not secrets.compare_digest(password, expected):
+        return "Incorrect password."
+    return None
+
+
 def _render_upload_section() -> None:
     st.markdown("### Sync data")
     st.caption("Trigger the weekly Garmin extract + workout summaries on GitHub Actions.")
 
+    sync_password = st.text_input("Sync password", type="password", key="report_sync_password")
+
     if st.button("Upload / Sync", type="primary", key="report_trigger_sync"):
-        st.session_state.report_show_upload_confirm = True
+        error = _verify_sync_password(sync_password)
+        if error:
+            st.error(error)
+        else:
+            st.session_state.report_show_upload_confirm = True
 
     if st.session_state.get("report_upload_message"):
         if st.session_state.get("report_upload_ok"):
@@ -46,12 +70,17 @@ def _render_upload_section() -> None:
         c1, c2 = st.columns(2)
         with c1:
             if st.button("Confirm sync", type="primary", key="report_confirm_sync"):
-                result = trigger_weekly_sync()
+                error = _verify_sync_password(st.session_state.get("report_sync_password", ""))
                 st.session_state.report_show_upload_confirm = False
-                st.session_state.report_upload_ok = result.ok
-                st.session_state.report_upload_message = result.message
-                if result.ok:
-                    st.session_state.report_upload_url = result.workflow_url
+                if error:
+                    st.session_state.report_upload_ok = False
+                    st.session_state.report_upload_message = error
+                else:
+                    result = trigger_weekly_sync()
+                    st.session_state.report_upload_ok = result.ok
+                    st.session_state.report_upload_message = result.message
+                    if result.ok:
+                        st.session_state.report_upload_url = result.workflow_url
                 st.rerun()
         with c2:
             if st.button("Cancel", key="report_cancel_sync"):
@@ -169,6 +198,20 @@ def _current_list_picks(activity_id: int) -> tuple[list[list[int]], list[str]]:
             picks.append(picked)
             names.append(st.session_state.get(f"{prefix}_name_{list_idx}", f"List {list_idx + 1}"))
     return picks, names
+
+
+def _publish_report_share(html: str, activity_id: int, date_str: str) -> None:
+    share_state_key = f"report_share_{activity_id}"
+    if not bucket:
+        st.session_state[share_state_key] = {"error": "GCS bucket not configured."}
+        return
+    share_url = publish_report_html(html, activity_id, date_str)
+    if share_url:
+        st.session_state[share_state_key] = {"url": share_url}
+    else:
+        st.session_state[share_state_key] = {
+            "error": "Could not publish report. Check GCS credentials."
+        }
 
 
 def _load_report_assets(activity_id: int, activity_day, sport: str) -> tuple[dict | None, object, list | None]:
@@ -292,16 +335,26 @@ def show(conn) -> None:
     )
     filename = f"report_{activity_id}_{date_str}.html"
 
-    preview_col, download_col = st.columns([1, 1])
-    with preview_col:
-        with st.expander("Preview HTML", expanded=False):
-            st.components.v1.html(html_doc, height=720, scrolling=True)
-    with download_col:
-        st.download_button(
-            label="Download HTML report",
-            data=html_doc,
-            file_name=filename,
-            mime="text/html",
-            type="primary",
-            key=f"report_download_{activity_id}",
-        )
+    with st.expander("Preview HTML", expanded=False):
+        st.components.v1.html(html_doc, height=720, scrolling=True)
+
+    st.download_button(
+        label="Create share link / Download",
+        data=html_doc,
+        file_name=filename,
+        mime="text/html",
+        type="primary",
+        key=f"report_share_download_{activity_id}",
+        on_click=_publish_report_share,
+        args=(html_doc, activity_id, date_str),
+        use_container_width=True,
+    )
+
+    share_state = st.session_state.get(f"report_share_{activity_id}")
+    if share_state:
+        if share_state.get("error"):
+            st.error(share_state["error"])
+        elif share_state.get("url"):
+            st.success(f"Share link (valid {REPORT_SHARE_EXPIRY_DAYS} days) — send to friends:")
+            st.link_button("Open shared report", share_state["url"], use_container_width=True)
+            st.code(share_state["url"], language=None)

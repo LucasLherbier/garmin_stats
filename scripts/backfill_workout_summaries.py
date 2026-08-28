@@ -38,7 +38,9 @@ def main():
         help="Include activities on or after this date (YYYY-MM-DD).",
     )
     parser.add_argument(
+        "--end_date",
         "--until",
+        dest="end_date",
         help="Include activities on or before this date (YYYY-MM-DD). Default: today.",
     )
     parser.add_argument(
@@ -68,11 +70,11 @@ def main():
         sys.exit(1)
 
     start_date = args.start_date
-    until = args.until or datetime.now().strftime("%Y-%m-%d")
+    end_date = args.end_date or datetime.now().strftime("%Y-%m-%d")
     if args.last_year:
         start_date = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
-    if start_date:
-        logger.info("Date filter: %s to %s (plus race-period scope).", start_date, until)
+    if start_date or args.end_date:
+        logger.info("Date filter: %s to %s (plus race-period scope).", start_date or "…", end_date)
 
     if get_api_key():
         logger.info("structure_summary: LLM enabled (GEMINI_API_KEY set).")
@@ -87,7 +89,7 @@ def main():
         skip_existing=not args.force,
         upload=not args.dry_run,
         since=start_date,
-        until=until,
+        until=end_date,
         replace_existing=args.force and not args.dry_run,
     )
 
