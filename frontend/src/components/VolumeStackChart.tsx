@@ -30,6 +30,11 @@ interface VolumeStackChartProps {
   horizontal?: boolean;
 }
 
+function safeDuration(value: unknown): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+}
+
 export function VolumeStackChart({
   rows,
   sportColors,
@@ -48,18 +53,20 @@ export function VolumeStackChart({
   const chartData = periods.map((period) => {
     const entry: Record<string, string | number> = {
       time_period: period.slice(5, 10).replace('-', '/'),
+      _raw_period: period,
     };
     for (const sport of sports) {
       const match = rows.find(
         (r) => r.time_period === period && r.activityTypeGrouped === sport,
       );
-      entry[sport] = match?.duration ?? 0;
+      entry[sport] = safeDuration(match?.duration);
+      entry[`${sport}__formatted`] = match?.formatted_duration ?? '0:00:00';
     }
     return entry;
   });
 
   const periodTotals = chartData.map((entry) =>
-    sports.reduce((sum, sport) => sum + Number(entry[sport] ?? 0), 0),
+    sports.reduce((sum, sport) => sum + safeDuration(entry[sport]), 0),
   );
   const averageTotal =
     periodTotals.reduce((sum, value) => sum + value, 0) / Math.max(periodTotals.length, 1);
@@ -69,6 +76,16 @@ export function VolumeStackChart({
     : undefined;
 
   const formatDurationTick = (value: number) => tickLabels?.[value] ?? String(value);
+
+  const tooltipFormatter = (value: unknown, name: unknown, item: { payload?: Record<string, unknown> }) => {
+    const sport = String(name ?? '');
+    const formatted = item.payload?.[`${sport}__formatted`];
+    if (typeof formatted === 'string' && formatted) return [formatted, sport];
+    const num = safeDuration(value);
+    return [formatDurationChart(num), sport];
+  };
+
+  const barGradId = 'stackBarPurple';
 
   return (
     <div className="chart-card">
@@ -80,6 +97,13 @@ export function VolumeStackChart({
             layout="vertical"
             margin={{ top: 4, right: 16, left: 4, bottom: 0 }}
           >
+            <defs>
+              <linearGradient id={barGradId} x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stopColor={CHART.chartBright} />
+                <stop offset="50%" stopColor={CHART.chartMid} />
+                <stop offset="100%" stopColor={CHART.chartDeep} />
+              </linearGradient>
+            </defs>
             <CartesianGrid stroke={CHART.grid} horizontal={false} />
             <XAxis
               type="number"
@@ -98,13 +122,7 @@ export function VolumeStackChart({
               axisLine={false}
               width={52}
             />
-            <Tooltip
-              contentStyle={tooltipStyle}
-              formatter={(value, name) => {
-                const row = rows.find((r) => r.activityTypeGrouped === String(name));
-                return [row?.formatted_duration ?? Number(value ?? 0), String(name)];
-              }}
-            />
+            <Tooltip contentStyle={tooltipStyle} formatter={tooltipFormatter} />
             <Legend wrapperStyle={{ fontSize: 10, color: CHART.tick }} />
             <ReferenceLine
               x={averageTotal}
@@ -124,13 +142,20 @@ export function VolumeStackChart({
                 key={sport}
                 dataKey={sport}
                 stackId="volume"
-                fill={sportColors[sport] ?? CHART.secondary}
-                radius={[0, 2, 2, 0]}
+                fill={sportColors[sport] ?? `url(#${barGradId})`}
+                radius={[0, 3, 3, 0]}
               />
             ))}
           </BarChart>
         ) : (
           <BarChart data={chartData} margin={{ top: 4, right: 8, left: 2, bottom: 0 }}>
+            <defs>
+              <linearGradient id={barGradId} x1="0" y1="1" x2="0" y2="0">
+                <stop offset="0%" stopColor={CHART.chartDeep} />
+                <stop offset="50%" stopColor={CHART.chartMid} />
+                <stop offset="100%" stopColor={CHART.chartBright} />
+              </linearGradient>
+            </defs>
             <CartesianGrid stroke={CHART.grid} vertical={false} />
             <XAxis
               dataKey="time_period"
@@ -147,13 +172,7 @@ export function VolumeStackChart({
               axisLine={false}
               width={52}
             />
-            <Tooltip
-              contentStyle={tooltipStyle}
-              formatter={(value, name) => {
-                const row = rows.find((r) => r.activityTypeGrouped === String(name));
-                return [row?.formatted_duration ?? Number(value ?? 0), String(name)];
-              }}
-            />
+            <Tooltip contentStyle={tooltipStyle} formatter={tooltipFormatter} />
             <Legend wrapperStyle={{ fontSize: 10, color: CHART.tick }} />
             <ReferenceLine
               y={averageTotal}
@@ -173,8 +192,8 @@ export function VolumeStackChart({
                 key={sport}
                 dataKey={sport}
                 stackId="volume"
-                fill={sportColors[sport] ?? CHART.secondary}
-                radius={[2, 2, 0, 0]}
+                fill={sportColors[sport] ?? `url(#${barGradId})`}
+                radius={[3, 3, 0, 0]}
               />
             ))}
           </BarChart>

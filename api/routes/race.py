@@ -62,6 +62,22 @@ def _pace_from_speed(avg_speed: float) -> str:
 
 
 
+def _swim_pace_from_speed(avg_speed: float) -> str:
+
+    if not avg_speed or avg_speed <= 0:
+
+        return "N/A"
+
+    pace_sec = 360.0 / avg_speed
+
+    p_m, p_s = divmod(int(round(pace_sec)), 60)
+
+    return f"{p_m}:{p_s:02d} /100m"
+
+
+
+
+
 @router.get("/races")
 
 def list_races():
@@ -204,7 +220,13 @@ def race_activities(
 
                 "averageSpeed": avg_speed,
 
-                "pace": _pace_from_speed(avg_speed) if grouped_sport == "running" else None,
+                "pace": (
+                    _pace_from_speed(avg_speed)
+                    if grouped_sport == "running"
+                    else _swim_pace_from_speed(avg_speed)
+                    if grouped_sport == "swimming"
+                    else None
+                ),
 
                 "elevationGain": safe_float(row.get("elevationGain")),
 
@@ -298,7 +320,7 @@ def race_detail(
 
     wellness_df = query(
 
-        sql.get_race_wellness_by_granularity_query(race["start"], end_date, granularity)
+        sql.get_race_wellness_daily_query(race["start"], end_date)
 
     )
 
@@ -322,7 +344,7 @@ def race_detail(
 
     payload["empty"] = False
 
-    payload["wellness"] = build_wellness_payload(wellness_df, granularity)
+    payload["wellness"] = build_wellness_payload(wellness_df, "day")
 
     return payload
 

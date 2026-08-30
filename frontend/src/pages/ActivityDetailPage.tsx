@@ -33,6 +33,12 @@ export function ActivityDetailPage() {
   const fromStats = location.pathname.startsWith('/stats/');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [sharing, setSharing] = useState(false);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [shareExpiryDays, setShareExpiryDays] = useState<number | null>(null);
+  const [shareMessage, setShareMessage] = useState<string | null>(null);
+  const [shareError, setShareError] = useState<string | null>(null);
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
   const [detail, setDetail] = useState<Awaited<ReturnType<typeof api.sports.activityDetail>> | null>(
     null,
   );
@@ -70,6 +76,55 @@ export function ActivityDetailPage() {
     [detail?.telemetry],
   );
 
+  async function handleShareLink() {
+    if (!activityId) return;
+    setSharing(true);
+    setShareError(null);
+    setShareMessage(null);
+    setShareUrl(null);
+    setShareExpiryDays(null);
+    setCopyState('idle');
+    try {
+      const result = await api.report.publish(Number(activityId));
+      if (result.share_url) {
+        setShareUrl(result.share_url);
+        setShareExpiryDays(result.share_expiry_days);
+        setShareMessage(`Share link ready · valid ${result.share_expiry_days} days`);
+        return;
+      }
+
+      if (result.html) {
+        const blob = new Blob([result.html], { type: 'text/html;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = `report_${activityId}.html`;
+        anchor.click();
+        URL.revokeObjectURL(url);
+        setShareMessage('HTML downloaded (GCS not configured for share link)');
+        return;
+      }
+
+      setShareError('Could not generate report.');
+    } catch (e) {
+      setShareError(e instanceof Error ? e.message : 'Share link failed');
+    } finally {
+      setSharing(false);
+    }
+  }
+
+  async function handleCopyLink() {
+    if (!shareUrl) return;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopyState('copied');
+    } catch {
+      setCopyState('failed');
+    }
+  }
+
+  const metaLine = [when.dateLine, when.timeLine, locationName].filter(Boolean).join(' · ');
+
   return (
     <main className="page">
       <Link to={backTo} className="back-link">← Back</Link>
@@ -82,9 +137,56 @@ export function ActivityDetailPage() {
           <h2 className="activity-detail-title">
             {String(activity.activityName ?? 'Activity')}
           </h2>
-          <div className="activity-detail-meta">
-            {[when.dateLine, when.timeLine, locationName].filter(Boolean).join(' · ')}
+          <div className="activity-detail-meta-row">
+            <div className="activity-detail-meta">{metaLine}</div>
+            <button
+              type="button"
+              className="btn-share-link"
+              disabled={sharing}
+              onClick={handleShareLink}
+            >
+              {sharing ? '…' : 'Share'}
+            </button>
           </div>
+          {shareUrl ? (
+            <div className="share-link-panel">
+              <p className="share-link-note">
+                {shareMessage ?? `Share link · valid ${shareExpiryDays ?? '?'} days`}
+                {' · '}
+                Tap <strong>Copy</strong> on mobile, or select the link below on laptop.
+              </p>
+              <div className="share-link-actions">
+                <input
+                  readOnly
+                  className="share-link-input"
+                  value={shareUrl}
+                  aria-label="Share link URL"
+                  onFocus={(event) => event.currentTarget.select()}
+                />
+                <button
+                  type="button"
+                  className="btn-share-copy"
+                  onClick={handleCopyLink}
+                >
+                  {copyState === 'copied' ? 'Copied' : 'Copy'}
+                </button>
+              </div>
+              {copyState === 'failed' ? (
+                <p className="share-link-copy-failed">Couldn&apos;t copy — select the link above.</p>
+              ) : null}
+              <a
+                href={shareUrl}
+                className="share-link-open"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Open report
+              </a>
+            </div>
+          ) : shareMessage ? (
+            <p className="share-link-note">{shareMessage}</p>
+          ) : null}
+          {shareError ? <div className="error">{shareError}</div> : null}
 
           {detail?.structure_summary ? (
             <p className="activity-structure-summary">{detail.structure_summary}</p>
@@ -163,18 +265,7 @@ export function ActivityDetailPage() {
           ) : null}
 
           {hasWorkoutLaps ? (
-            <>
-              <WorkoutPaceChart laps={laps} avgPaceLabel={activity.pace ? String(activity.pace) : undefined} />
-              <RunSplitsTable laps={laps} />
-            </>
-          ) : null}
-
-          {detail?.splits?.length ? (
-            <SplitsTable rows={detail.splits} title={hasWorkoutLaps ? 'Split details' : 'Splits'} />
-          ) : null}
-
-          {!hasWorkoutLaps && !detail?.splits?.length && detail?.workout_laps?.length ? (
-            <SplitsTable rows={detail.workout_laps} title="Splits" />
+            <WorkoutPaceChart laps={laps} avgPaceLabel={activity.pace ? String(activity.pace) : undefined} />
           ) : null}
 
           {isCycling && detail?.power_profile ? (
@@ -189,6 +280,16 @@ export function ActivityDetailPage() {
                 seconds={detail.power_profile.seconds}
               />
             </>
+          ) : null}
+
+          {hasWorkoutLaps ? <RunSplitsTable laps={laps} /> : null}
+
+          {detail?.splits?.length ? (
+            <SplitsTable rows={detail.splits} title={hasWorkoutLaps ? 'Split details' : 'Splits'} />
+          ) : null}
+
+          {!hasWorkoutLaps && !detail?.splits?.length && detail?.workout_laps?.length ? (
+            <SplitsTable rows={detail.workout_laps} title="Splits" />
           ) : null}
         </>
       ) : null}

@@ -30,8 +30,20 @@ type RaceActivity = Awaited<
   ReturnType<typeof api.race.activities>
 >['activities'][number];
 
+function formatSwimPace(speedKmh: number): string {
+  if (!speedKmh || speedKmh <= 0) return '—';
+  const paceSec = 360 / speedKmh;
+  const minutes = Math.floor(paceSec / 60);
+  const seconds = Math.round(paceSec % 60);
+  return `${minutes}:${seconds.toString().padStart(2, '0')} /100m`;
+}
+
 function formatActivityPace(activity: RaceActivity, tab: RaceActivityTab): string {
   if (tab === 'running' && activity.pace) return activity.pace;
+  if (tab === 'swimming') {
+    if (activity.pace) return activity.pace;
+    return formatSwimPace(activity.averageSpeed);
+  }
   if (tab === 'cycling' && activity.averageSpeed > 0) {
     return `${activity.averageSpeed.toFixed(1)} km/h`;
   }
@@ -200,7 +212,7 @@ export function RacePage() {
             />
           </section>
 
-          <section className="section-card">
+          <section className="section-card tone-accent">
             <h2 className="section-title">Distance over time</h2>
             <SegmentedControl
               options={[
@@ -209,12 +221,14 @@ export function RacePage() {
               ]}
               value={granularity}
               onChange={setGranularity}
+              variant="purple"
             />
             <div style={{ height: 10 }} />
             <SegmentedControl
               options={CHART_VIEW_OPTIONS}
               value={chartView}
               onChange={setChartView}
+              variant="purple"
             />
             <div style={{ height: 10 }} />
             {chartView === 'volume' ? (
@@ -226,6 +240,7 @@ export function RacePage() {
                   title="Total volume"
                   valueFormat="duration"
                   periodLabel={granularity === 'week' ? 'Week' : 'Month'}
+                  colorTheme="purple"
                 />
               ) : (
                 <div className="empty">No volume data for this period.</div>
@@ -241,13 +256,14 @@ export function RacePage() {
                 title={`${activeDistanceChart.display} volume`}
                 valueFormat="distance"
                 periodLabel={granularity === 'week' ? 'Week' : 'Month'}
+                colorTheme="purple"
               />
             ) : (
               <div className="empty">No distance data for this sport.</div>
             )}
           </section>
 
-          <section className="section-card">
+          <section className="section-card tone-accent">
             <VolumeStackChart
               rows={detail.training_load.rows}
               totals={detail.training_load.totals}
@@ -261,9 +277,7 @@ export function RacePage() {
 
           <section className="section-card">
             <h2 className="section-title">Recovery & wellness</h2>
-            <p className="section-caption">
-              Daily wellness metrics averaged by {granularity}.
-            </p>
+            <p className="section-caption">Daily wellness metrics — one point per day when data exists.</p>
             {detail.wellness?.charts.some((chart) => chart.points.length) ? (
               detail.wellness.charts.map((chart) =>
                 chart.points.length ? (
@@ -276,7 +290,9 @@ export function RacePage() {
                     yColumn="value"
                     yLabel={chart.y_axis_title}
                     title={chart.label}
-                    periodLabel={granularity === 'week' ? 'Week' : 'Month'}
+                    periodLabel="Day"
+                    colorTheme="purple"
+                    display="dots"
                   />
                 ) : null,
               )

@@ -1,8 +1,10 @@
 import os
 import io
 import logging
+import secrets
 from datetime import timedelta
 from functools import lru_cache
+from pathlib import Path
 import pandas as pd
 from google.cloud import storage, bigquery
 from google.cloud.exceptions import NotFound
@@ -14,18 +16,38 @@ logger = logging.getLogger(__name__)
 import json
 from google.oauth2 import service_account
 
-# Load environment variables
-load_dotenv()
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+# Load environment variables from repo root (works regardless of process cwd)
+load_dotenv(_PROJECT_ROOT / ".env")
 
 # Global variables for GCP
 gcs_client = None
 bq_client = None
 bucket = None
 _gcs_credentials = None
-REPORT_SHARE_EXPIRY_DAYS = int(os.getenv("REPORT_SHARE_EXPIRY_DAYS", "30"))
+REPORT_SHARE_EXPIRY_DAYS = int(os.getenv("REPORT_SHARE_EXPIRY_DAYS", "7"))
+# GCS V4 signed URLs with service-account keys are capped at 7 days.
+GCS_SIGNED_URL_MAX_DAYS = 7
+REPORT_PUBLIC_BASE_URL = os.getenv(
+    "REPORT_PUBLIC_BASE_URL",
+    "https://garmin-stats-three.vercel.app/api/report",
+).rstrip("/")
 GCP_PROJECT_ID = os.getenv('GCP_PROJECT_ID', '').strip('"').strip("'") or None
 GCP_DATASET_ID = os.getenv('GCP_DATASET_ID', 'garmin_stats').strip('"').strip("'")
 GCP_BUCKET_NAME = os.getenv('GCP_BUCKET_NAME', '').strip('"').strip("'") or None
+
+
+def _resolve_path(path_str: str) -> Path:
+    path = Path(path_str.strip('"').strip("'"))
+    if path.is_absolute():
+        return path
+    if path.exists():
+        return path.resolve()
+    root_path = _PROJECT_ROOT / path
+    if root_path.exists():
+        return root_path
+    return path
 
 def initialize_clients():
     global gcs_client, bq_client, bucket, GCP_PROJECT_ID, _gcs_credentials
@@ -47,9 +69,12 @@ def initialize_clients():
         # Priority 2: credentials.json (local file)
         if not credentials:
             cred_path = os.getenv('GOOGLE_APPLICATION_CREDENTIALS', 'credentials.json').strip('"').strip("'")
-            if os.path.exists(cred_path):
-                credentials = service_account.Credentials.from_service_account_file(cred_path)
-                logger.info(f"GCP Clients: Using credentials from file {cred_path}")
+            resolved_cred = _resolve_path(cred_path)
+            if resolved_cred.exists():
+                credentials = service_account.Credentials.from_service_account_file(str(resolved_cred))
+                if not GCP_PROJECT_ID:
+                    GCP_PROJECT_ID = credentials.project_id
+                logger.info(f"GCP Clients: Using credentials from file {resolved_cred}")
 
         # Initialize clients
         if credentials:
@@ -345,27 +370,40 @@ def query_bigquery_live(query: str):
 
 
 
-def publish_report_html(html: str, activity_id: int, date_str: str) -> str | None:
-    """Upload an activity HTML report and return a signed HTTPS URL for sharing."""
+def publish_report_html(html: str, activity_id: int, date_str: str) -> tuple[str | None, int]:
+    """Upload an activity HTML report and return a short public share URL."""
+    expiry_days = min(REPORT_SHARE_EXPIRY_DAYS, GCS_SIGNED_URL_MAX_DAYS)
     if bucket is None:
         logger.warning("Bucket not initialized. Cannot publish report.")
-        return None
-    gcs_path = f"reports/{activity_id}/report_{date_str}.html"
+        return None, expiry_days
+
+    token = secrets.token_urlsafe(8)
+    share_path = f"reports/share/{token}.html"
+    archive_path = f"reports/{activity_id}/report_{date_str}.html"
+
     try:
-        blob = bucket.blob(gcs_path)
-        blob.upload_from_string(html, content_type="text/html; charset=utf-8")
-        blob.cache_control = "public, max-age=3600"
-        blob.patch()
-        sign_kwargs: dict = {
-            "version": "v4",
-            "expiration": timedelta(days=REPORT_SHARE_EXPIRY_DAYS),
-            "method": "GET",
-        }
-        if _gcs_credentials is not None:
-            sign_kwargs["credentials"] = _gcs_credentials
-        return blob.generate_signed_url(**sign_kwargs)
+        for gcs_path in (share_path, archive_path):
+            blob = bucket.blob(gcs_path)
+            blob.upload_from_string(html, content_type="text/html; charset=utf-8")
+            blob.cache_control = "public, max-age=3600"
+            blob.patch()
+        return f"{REPORT_PUBLIC_BASE_URL}/r/{token}", expiry_days
     except Exception as e:
         logger.error(f"Failed to publish report HTML: {e}")
+        return None, expiry_days
+
+
+def read_shared_report_html(token: str) -> str | None:
+    """Load a published report HTML by its short share token."""
+    if not bucket or not token or "/" in token or ".." in token:
+        return None
+    gcs_path = f"reports/share/{token}.html"
+    try:
+        if not check_gcs_path_exists(gcs_path):
+            return None
+        return bucket.blob(gcs_path).download_as_text(encoding="utf-8")
+    except Exception as e:
+        logger.error(f"Failed to read shared report {token}: {e}")
         return None
 
 

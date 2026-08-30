@@ -4,6 +4,7 @@ from datetime import date
 
 from dotenv import load_dotenv
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 load_dotenv()
@@ -13,19 +14,15 @@ from actions.activity_splits import (
     parse_laps_field,
     resolve_sport,
 )
-from actions.power_curve import power_profile_from_fit, power_profile_from_telemetry
+from actions.report_assets import load_report_assets
 from actions.report_html import build_activity_report_html, build_list_aggregates
-from actions.report_map import gpx_track_points
-from actions.parse_tcx_csv import parse_tcx_to_dataframe
 from api.serializers import df_to_records, record_from_series
 from utils import sql_queries as sql
 from utils.github_actions import trigger_weekly_sync
 from utils.utils_gcp import (
-    REPORT_SHARE_EXPIRY_DAYS,
-    bucket,
-    check_gcs_path_exists,
     publish_report_html,
     query_bigquery_live,
+    read_shared_report_html,
 )
 
 router = APIRouter(prefix="/report", tags=["report"])
@@ -112,49 +109,8 @@ def activity_report_detail(activity_id: int):
     }
 
 
-def _load_report_assets(activity_id: int, start_time_local, sport: str):
-    power_profile = None
-    hr_series = None
-    track_points = None
-
-    if not bucket:
-        return power_profile, hr_series, track_points
-
-    if start_time_local:
-        month = str(start_time_local)[:7]
-    else:
-        month = date.today().strftime("%Y-%m")
-    base = f"data/raw/{month}/{activity_id}"
-
-    gpx_path = f"{base}/{activity_id}.gpx"
-    tcx_path = f"{base}/{activity_id}.tcx"
-    fit_path = f"{base}/{activity_id}.fit"
-
-    try:
-        if check_gcs_path_exists(gpx_path):
-            gpx_content = bucket.blob(gpx_path).download_as_bytes()
-            track_points = gpx_track_points(gpx_content)
-
-        if check_gcs_path_exists(tcx_path):
-            tcx_content = bucket.blob(tcx_path).download_as_bytes()
-            df_tcx = parse_tcx_to_dataframe(tcx_content)
-            if "HeartRate" in df_tcx.columns:
-                hr_series = df_tcx["HeartRate"]
-            if sport == "cycling":
-                if check_gcs_path_exists(fit_path):
-                    fit_content = bucket.blob(fit_path).download_as_bytes()
-                    power_profile = power_profile_from_fit(fit_content)
-                elif "Watts" in df_tcx.columns:
-                    power_profile = power_profile_from_telemetry(df_tcx["Time"], df_tcx["Watts"])
-    except Exception:
-        pass
-
-    return power_profile, hr_series, track_points
-
-
-@router.post("/generate")
-def generate_report(body: GenerateReportRequest):
-    detail_df = query_bigquery_live(sql.get_activity_report_query(body.activity_id))
+def _build_report_html(activity_id: int):
+    detail_df = query_bigquery_live(sql.get_activity_report_query(activity_id))
     if detail_df.empty:
         raise HTTPException(status_code=404, detail="Activity not found")
 
@@ -162,32 +118,54 @@ def generate_report(body: GenerateReportRequest):
     sport = resolve_sport(detail_row)
     laps = parse_laps_field(detail_row.get("laps"))
 
-    list_aggregates = None
-    if laps and body.split_lists:
-        list_picks = [item.indices for item in body.split_lists if item.indices]
-        list_names = [item.name or f"List {i + 1}" for i, item in enumerate(body.split_lists) if item.indices]
-        if list_picks:
-            list_aggregates = build_list_aggregates(laps, list_picks, sport, list_names=list_names)
-
-    power_profile, hr_series, track_points = _load_report_assets(
-        body.activity_id, detail_row.get("startTimeLocal"), sport
+    power_profile, hr_series, track_points, telemetry_df = load_report_assets(
+        activity_id, detail_row.get("startTimeLocal"), sport
     )
 
     html_doc = build_activity_report_html(
         detail_row,
         laps,
-        list_aggregates=list_aggregates,
+        list_aggregates=None,
         power_profile=power_profile,
         hr_series=hr_series,
         track_points=track_points,
+        telemetry_df=telemetry_df,
     )
+    return detail_row, html_doc
+
+
+@router.get("/r/{token}")
+def view_shared_report(token: str):
+    """Serve a published report via a short token (no long GCS signed URL)."""
+    html_doc = read_shared_report_html(token)
+    if not html_doc:
+        raise HTTPException(status_code=404, detail="Report not found or link expired.")
+    return HTMLResponse(content=html_doc, media_type="text/html; charset=utf-8")
+
+
+@router.post("/generate")
+def generate_report(body: GenerateReportRequest):
+    detail_row, html_doc = _build_report_html(body.activity_id)
 
     date_str = str(detail_row.get("Day") or detail_row.get("startTimeLocal", ""))[:10]
-    share_url = publish_report_html(html_doc, body.activity_id, date_str)
+    share_url, share_expiry_days = publish_report_html(html_doc, body.activity_id, date_str)
 
     return {
         "activity_id": body.activity_id,
         "html": html_doc,
         "share_url": share_url,
-        "share_expiry_days": REPORT_SHARE_EXPIRY_DAYS,
+        "share_url_long": None,
+        "share_expiry_days": share_expiry_days,
     }
+
+
+@router.get("/download/{activity_id}")
+def download_report(activity_id: int):
+    detail_row, html_doc = _build_report_html(activity_id)
+    date_str = str(detail_row.get("Day") or detail_row.get("startTimeLocal", ""))[:10]
+    filename = f"report_{activity_id}_{date_str}.html"
+    return HTMLResponse(
+        content=html_doc,
+        media_type="text/html; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

@@ -1,7 +1,37 @@
-const API_BASE = import.meta.env.VITE_API_BASE?.replace(/\/$/, '') || '/api';
+function normalizeApiBase(raw: string | undefined): string {
+  const trimmed = (raw ?? '/api').trim().replace(/\/$/, '').replace(/[?#].*$/, '');
+  if (!trimmed) return '/api';
+
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    try {
+      const url = new URL(trimmed);
+      const path = url.pathname.replace(/\/$/, '') || '/api';
+      return `${url.origin}${path.endsWith('/api') ? path : '/api'}`;
+    } catch {
+      return '/api';
+    }
+  }
+
+  return trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+}
+
+const API_BASE = normalizeApiBase(import.meta.env.VITE_API_BASE);
+
+function apiUrl(path: string, params?: Record<string, string | number | undefined>): string {
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  const url = `${API_BASE}${normalizedPath}`;
+  if (!params) return url;
+
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined) search.set(key, String(value));
+  }
+  const query = search.toString();
+  return query ? `${url}?${query}` : url;
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetch(path, {
     headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
     ...init,
   });
@@ -9,8 +39,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const text = await res.text();
     let message = text;
     try {
-      const json = JSON.parse(text) as { detail?: string };
-      if (typeof json.detail === 'string') message = json.detail;
+      const json = JSON.parse(text) as {
+        detail?: string | Array<{ msg?: string; loc?: unknown[] }>;
+      };
+      if (typeof json.detail === 'string') {
+        message = json.detail;
+      } else if (Array.isArray(json.detail)) {
+        message = json.detail.map((item) => item.msg ?? 'Invalid request').join('; ');
+      }
     } catch {
       /* use raw response body */
     }
@@ -20,34 +56,34 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  health: () => request<{ status: string }>('/health'),
+  health: () => request<{ status: string }>(apiUrl('/health')),
 
   overview: {
-    weeklyTotals: () => request<import('../types').WeeklyTotals>('/overview/weekly-totals'),
+    weeklyTotals: () => request<import('../types').WeeklyTotals>(apiUrl('/overview/weekly-totals')),
     volumeChart: (sport: string, timeRange: string, granularity: string) =>
       request<{ points: import('../types').ChartPoint[]; y_column: string }>(
-        `/overview/volume-chart?sport=${sport}&time_range=${timeRange}&granularity=${granularity}`,
+        apiUrl('/overview/volume-chart', { sport, time_range: timeRange, granularity }),
       ),
     benchmarks: (sport: string, granularity: string) =>
       request<{ periods: Record<string, unknown>[] }>(
-        `/overview/benchmarks?sport=${sport}&granularity=${granularity}`,
+        apiUrl('/overview/benchmarks', { sport, granularity }),
       ),
     weeklyBreakdown: () =>
-      request<{ sports: Record<string, unknown>[] }>('/overview/weekly-breakdown'),
+      request<{ sports: Record<string, unknown>[] }>(apiUrl('/overview/weekly-breakdown')),
     activityHeatmap: (sport: 'swimming' | 'cycling' | 'running' | 'race') =>
       request<{
         sport: string;
         week_start: string | null;
         cells: Array<{ dow: number; slot: 'AM' | 'PM' | 'EV'; count: number }>;
-      }>(`/overview/activity-heatmap?sport=${sport}`),
+      }>(apiUrl('/overview/activity-heatmap', { sport })),
   },
 
   sports: {
     volumeSummary: (sport: string) =>
-      request<{ periods: Record<string, unknown>[] }>(`/sports/${sport}/volume-summary`),
+      request<{ periods: Record<string, unknown>[] }>(apiUrl(`/sports/${sport}/volume-summary`)),
     trends: (sport: string, timeRange: string) =>
       request<{ points: import('../types').ChartPoint[] }>(
-        `/sports/${sport}/trends?timeRange=${timeRange}`,
+        apiUrl(`/sports/${sport}/trends`, { timeRange }),
       ),
     activities: (sport: string, timeRange: string, page = 1) =>
       request<{
@@ -55,7 +91,7 @@ export const api = {
         total: number;
         page: number;
         total_pages: number;
-      }>(`/sports/${sport}/activities?timeRange=${timeRange}&page=${page}`),
+      }>(apiUrl(`/sports/${sport}/activities`, { timeRange, page })),
     activityDetail: (activityId: number) =>
       request<{
         activity: Record<string, unknown>;
@@ -71,7 +107,7 @@ export const api = {
           seconds: number[];
         } | null;
         workout_laps: Record<string, unknown>[] | null;
-      }>(`/sports/activities/${activityId}`),
+      }>(apiUrl(`/sports/activities/${activityId}`)),
   },
 
   stats: {
@@ -94,11 +130,11 @@ export const api = {
           distance: number;
           duration?: string;
         }>;
-      }>(`/stats?metric=${metric}`),
+      }>(apiUrl('/stats', { metric })),
   },
 
   race: {
-    list: () => request<{ races: Array<{ index: number; display: string }> }>('/race/races'),
+    list: () => request<{ races: Array<{ index: number; display: string }> }>(apiUrl('/race/races')),
     detail: (raceIndex: number, granularity: string) =>
       request<{
         empty: boolean;
@@ -159,7 +195,7 @@ export const api = {
             points: Array<{ time_period: string; value: number }>;
           }>;
         };
-      }>(`/race/${raceIndex}?granularity=${granularity}`),
+      }>(apiUrl(`/race/${raceIndex}`, { granularity })),
     activities: (
       raceIndex: number,
       sport: 'swimming' | 'cycling' | 'running' | 'gym',
@@ -193,25 +229,25 @@ export const api = {
           average_hr: number;
           elevation_gain_m: number;
         };
-      }>(`/race/${raceIndex}/activities?sport=${sport}&page=${page}&pageSize=5`),
+      }>(apiUrl(`/race/${raceIndex}/activities`, { sport, page, pageSize: 5 })),
   },
 
   races: {
     results: () =>
       request<{ triathlon: import('../types').RaceResult[]; running: import('../types').RaceResult[] }>(
-        '/races/results',
+        apiUrl('/races/results'),
       ),
   },
 
   report: {
     sync: (password: string) =>
-      request<{ ok: boolean; message: string; workflow_url: string }>('/report/sync', {
+      request<{ ok: boolean; message: string; workflow_url: string }>(apiUrl('/report/sync'), {
         method: 'POST',
         body: JSON.stringify({ password }),
       }),
     activitiesByDate: (dateStr: string) =>
       request<{ date: string; activities: import('../types').ReportActivity[] }>(
-        `/report/activities?date_str=${dateStr}`,
+        apiUrl('/report/activities', { date_str: dateStr }),
       ),
     activityDetail: (activityId: number) =>
       request<{
@@ -220,13 +256,32 @@ export const api = {
         laps: Record<string, unknown>[];
         laps_display: Record<string, unknown>[];
         parse_status?: string;
-      }>(`/report/activities/${activityId}`),
+      }>(apiUrl(`/report/activities/${activityId}`)),
     generate: (activityId: number, splitLists: Array<{ name: string; indices: number[] }>) =>
-      request<{ html: string; share_url: string | null; share_expiry_days: number }>(
-        '/report/generate',
+      request<{
+        html: string;
+        share_url: string | null;
+        share_url_long?: string | null;
+        share_expiry_days: number;
+      }>(
+        apiUrl('/report/generate'),
         {
           method: 'POST',
           body: JSON.stringify({ activity_id: activityId, split_lists: splitLists }),
+        },
+      ),
+    download: (activityId: number) => apiUrl(`/report/download/${activityId}`),
+    publish: (activityId: number) =>
+      request<{
+        html: string;
+        share_url: string | null;
+        share_url_long?: string | null;
+        share_expiry_days: number;
+      }>(
+        apiUrl('/report/generate'),
+        {
+          method: 'POST',
+          body: JSON.stringify({ activity_id: activityId, split_lists: [] }),
         },
       ),
   },

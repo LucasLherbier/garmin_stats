@@ -1,4 +1,4 @@
-"""Mobile-friendly HTML activity reports — Strava-inspired layouts."""
+"""Mobile-friendly HTML activity reports — Garmin Analytics dark theme."""
 
 from __future__ import annotations
 
@@ -21,152 +21,193 @@ from actions.report_charts import (
     svg_run_list_splits_table,
     svg_run_splits_table,
     svg_swim_splits_table,
+    svg_telemetry_stack,
 )
 from actions.report_map import LEAFLET_HEAD, html_route_map
 from utils.pipeline.workout_summaries.parse_laps import format_duration, format_pace
 
 
-STRAVA_CSS = """
+REPORT_CSS = """
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,600;0,9..40,700;1,9..40,400&family=Outfit:wght@500;600;650;700&display=swap');
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
-  background: #fff;
-  color: #2d2d2d;
+  font-family: 'DM Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: #07070c;
+  color: #f5f5f7;
   -webkit-font-smoothing: antialiased;
 }
 .phone {
   max-width: 430px;
   width: 100%;
   margin: 0 auto;
-  background: #fff;
+  background: #07070c;
   min-height: 100vh;
 }
 .intro-top {
   padding: 16px 16px 12px;
 }
 .intro-top h1 {
+  font-family: 'Outfit', 'DM Sans', system-ui, sans-serif;
   font-size: 22px;
   font-weight: 700;
   line-height: 1.25;
-  color: #1a1a1a;
+  letter-spacing: -0.02em;
+  color: #f5f5f7;
 }
 .intro-meta {
   padding: 12px 16px 10px;
-  border-bottom: 1px solid #e8e8e8;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
 }
-.map-wrap { width: 100%; line-height: 0; background: #eceae4; }
+.map-wrap { width: 100%; line-height: 0; background: #12121a; }
 .route-map-leaflet { z-index: 0; }
-.leaflet-control-attribution { font-size: 9px !important; }
+.leaflet-control-attribution { font-size: 9px !important; color: #71717a !important; }
 .intro-meta .location {
   font-size: 14px;
   font-weight: 600;
-  color: #1a1a1a;
+  color: #f5f5f7;
   margin-bottom: 2px;
 }
 .intro-meta .when {
   font-size: 13px;
-  color: #666;
+  color: #a1a1aa;
 }
 .intro-meta .effect {
   font-size: 14px;
   font-weight: 600;
-  color: #fc5200;
+  color: #a78bfa;
   margin-top: 6px;
 }
 .intro-meta .structure {
   font-size: 13px;
   line-height: 1.45;
-  color: #444;
+  color: #a1a1aa;
   margin-top: 6px;
 }
 .workout-block {
   padding: 0 16px 16px;
   font-size: 14px;
   line-height: 1.55;
-  color: #444;
+  color: #a1a1aa;
   white-space: pre-wrap;
 }
 .metrics-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  border-top: 1px solid #e8e8e8;
-  border-bottom: 1px solid #e8e8e8;
+  gap: 0;
+  margin: 0 16px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 24px;
+  overflow: hidden;
+  background: #12121a;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05), 0 12px 32px rgba(0, 0, 0, 0.28);
 }
 .metric {
-  padding: 14px 16px;
-  border-bottom: 1px solid #e8e8e8;
-  border-right: 1px solid #e8e8e8;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  border-right: 1px solid rgba(255, 255, 255, 0.07);
   text-align: center;
 }
 .metric:nth-child(2n) { border-right: none; }
-.metric:nth-last-child(-n+2):nth-child(odd),
-.metric:nth-last-child(1):nth-child(even) { border-bottom: none; }
-.metric:nth-last-child(1):nth-child(odd) { border-bottom: none; }
+.metric:nth-last-child(-n+2) { border-bottom: none; }
 .metrics-grid.three-col { grid-template-columns: 1fr 1fr 1fr; }
-.metrics-grid.three-col .metric:nth-child(2n) { border-right: 1px solid #e8e8e8; }
+.metrics-grid.three-col .metric:nth-child(2n) { border-right: 1px solid rgba(255, 255, 255, 0.07); }
 .metrics-grid.three-col .metric:nth-child(3n) { border-right: none; }
 .metric .label {
-  font-size: 11px;
-  color: #999;
-  letter-spacing: 0.02em;
-  margin-bottom: 3px;
+  font-size: 0.68rem;
+  color: #71717a;
+  letter-spacing: 0.01em;
+  margin-bottom: 4px;
 }
 .metric .value {
-  font-size: 20px;
-  font-weight: 700;
-  color: #1a1a1a;
+  font-family: 'Outfit', 'DM Sans', system-ui, sans-serif;
+  font-size: 0.92rem;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  color: #f5f5f7;
   line-height: 1.15;
 }
 .section {
-  border-top: 10px solid #f5f5f5;
-  padding: 16px 0 8px;
+  margin: 0 16px 10px;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 24px;
+  background: #12121a;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05), 0 12px 32px rgba(0, 0, 0, 0.28);
+}
+.section.tone-bike {
+  background: linear-gradient(165deg, rgba(255, 107, 44, 0.07) 0%, transparent 45%), #12121a;
+  border-color: rgba(255, 107, 44, 0.12);
+}
+.section.tone-run {
+  background: linear-gradient(165deg, rgba(167, 139, 250, 0.08) 0%, transparent 45%), #12121a;
+  border-color: rgba(167, 139, 250, 0.12);
+}
+.section.tone-swim {
+  background: linear-gradient(165deg, rgba(45, 212, 191, 0.07) 0%, transparent 45%), #12121a;
+  border-color: rgba(45, 212, 191, 0.12);
 }
 .section-head {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 16px 10px;
-  font-size: 16px;
-  font-weight: 700;
-  color: #1a1a1a;
+  padding: 0 0 12px;
+  font-family: 'Outfit', 'DM Sans', system-ui, sans-serif;
+  font-size: 0.88rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: #f5f5f7;
 }
-.section-head .logo { color: #fc5200; font-weight: 800; font-size: 14px; }
-.chart-wrap { padding: 0 8px 8px; overflow: hidden; }
+.section-head .logo { color: #ff6b2c; font-weight: 800; font-size: 14px; }
+.chart-wrap { padding: 0; overflow: hidden; }
+.telemetry-stack { display: flex; flex-direction: column; gap: 14px; }
+.telemetry-chart { position: relative; }
+.telemetry-chart-title {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #71717a;
+  margin-bottom: 4px;
+  letter-spacing: 0.02em;
+}
 .splits-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
 }
 .splits-table th {
-  color: #aaa;
+  color: #71717a;
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.04em;
   padding: 4px 8px 2px;
   text-align: left;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
 }
 .splits-table td {
   padding: 3px 8px;
-  border-bottom: 1px solid #f3f3f3;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   vertical-align: middle;
   line-height: 1.2;
 }
-.split-km { font-weight: 600; color: #333; width: 28px; }
-.split-time { color: #666; width: 44px; white-space: nowrap; font-size: 12px; }
-.split-pace { font-weight: 600; color: #333; width: 36px; }
+.split-km { font-weight: 600; color: #f5f5f7; width: 28px; }
+.split-time { color: #a1a1aa; width: 44px; white-space: nowrap; font-size: 12px; }
+.split-pace { font-weight: 600; color: #f5f5f7; width: 36px; }
 .split-bar { width: auto; }
 .split-bar span { display: block; height: 14px; border-radius: 2px; max-width: 100%; }
-.split-elev, .split-hr { color: #666; text-align: right; width: 32px; white-space: nowrap; }
+.split-elev, .split-hr { color: #a1a1aa; text-align: right; width: 32px; white-space: nowrap; }
 .list-block {
-  border-top: 10px solid #f5f5f5;
-  padding: 14px 0 4px;
+  margin: 0 16px 10px;
+  padding: 14px 16px 4px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 24px;
+  background: #12121a;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05), 0 12px 32px rgba(0, 0, 0, 0.28);
 }
 .list-block .list-name {
   padding: 0 16px 10px;
   font-size: 13px;
   font-weight: 600;
-  color: #fc5200;
+  color: #a78bfa;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   text-align: center;
@@ -178,7 +219,7 @@ body {
   padding: 8px 16px 4px;
   font-size: 13px;
   font-weight: 600;
-  color: #666;
+  color: #a1a1aa;
 }
 .compare-table-wrap {
   padding: 0 12px 12px;
@@ -190,21 +231,21 @@ body {
   table-layout: fixed;
 }
 .compare-table th {
-  color: #aaa;
+  color: #71717a;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.02em;
   padding: 8px 3px;
   text-align: center;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
   white-space: normal;
   line-height: 1.2;
 }
 .compare-table td {
   padding: 10px 3px;
-  border-bottom: 1px solid #f3f3f3;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   vertical-align: middle;
-  color: #333;
+  color: #f5f5f7;
   text-align: center;
   line-height: 1.2;
 }
@@ -215,25 +256,25 @@ body {
 }
 .compare-table td:first-child {
   font-weight: 700;
-  color: #fc5200;
+  color: #a78bfa;
   font-size: 13px;
 }
 .list-splits-block {
-  border-top: 1px solid #eee;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
   padding: 6px 0 4px;
 }
 .list-splits-block .list-splits-head {
   padding: 6px 16px 2px;
   font-size: 13px;
   font-weight: 600;
-  color: #666;
+  color: #a1a1aa;
 }
 .footer {
   padding: 24px 16px 32px;
   text-align: center;
   font-size: 11px;
-  color: #bbb;
-  border-top: 10px solid #f5f5f5;
+  color: #71717a;
+  background: #07070c;
 }
 """
 
@@ -266,7 +307,22 @@ def _metrics_grid(pairs: list[tuple[str, str]]) -> str:
     return f'<div class="metrics-grid">{"".join(_metric_block(l, v) for l, v in pairs)}</div>'
 
 
-def _activity_summary_metrics(activity_row, sport: str) -> list[tuple[str, str]]:
+def _avg_power_from_telemetry(telemetry_df: pd.DataFrame | None) -> int | None:
+    if telemetry_df is None or telemetry_df.empty or "Watts" not in telemetry_df.columns:
+        return None
+    watts = pd.to_numeric(telemetry_df["Watts"], errors="coerce").dropna()
+    watts = watts[watts > 0]
+    if watts.empty:
+        return None
+    return int(round(float(watts.mean())))
+
+
+def _activity_summary_metrics(
+    activity_row,
+    sport: str,
+    *,
+    avg_power_w: int | None = None,
+) -> list[tuple[str, str]]:
     sport = sport.lower()
     duration = activity_row.get("duration")
     distance = activity_row.get("distance")
@@ -290,15 +346,14 @@ def _activity_summary_metrics(activity_row, sport: str) -> list[tuple[str, str]]
         dist_km = float(distance) if distance is not None and not pd.isna(distance) else None
         elev = activity_row.get("elevationGain")
         cal = activity_row.get("calories")
-        hr = activity_row.get("averageHR")
         speed = activity_row.get("averageSpeed")
         return [
             ("Distance", f"{dist_km:.1f} km" if dist_km else "—"),
-            ("Moving Time", format_duration(duration) if duration else "—"),
-            ("Avg Speed", f"{float(speed) * 3.6:.1f} km/h" if speed is not None and not pd.isna(speed) else "—"),
             ("Elevation Gain", f"{int(float(elev))} m" if elev is not None and not pd.isna(elev) else "—"),
-            ("Calories", f"{int(cal):,} cal" if cal is not None and not pd.isna(cal) else "—"),
-            ("Avg Heart Rate", f"{int(hr)} bpm" if hr is not None and not pd.isna(hr) else "—"),
+            ("Moving Time", format_duration(duration) if duration else "—"),
+            ("Avg Power", f"{avg_power_w} W" if avg_power_w is not None else "—"),
+            ("Avg Speed", f"{float(speed) * 3.6:.1f} km/h" if speed is not None and not pd.isna(speed) else "—"),
+            ("Calories", f"{int(cal):,} Cal" if cal is not None and not pd.isna(cal) else "—"),
         ]
 
     if sport == "swimming":
@@ -496,7 +551,21 @@ def _list_blocks_html(list_aggregates: list[dict[str, Any]], laps: list[dict], s
     )
 
 
-def _hr_zones_section(laps: list[dict], hr_series, max_hr) -> str:
+def _sport_tone_class(sport: str) -> str:
+    return {
+        "cycling": "tone-bike",
+        "running": "tone-run",
+        "swimming": "tone-swim",
+    }.get(sport.lower(), "")
+
+
+def _section_open(title: str, sport: str, *, logo: str = "") -> str:
+    tone = _sport_tone_class(sport)
+    logo_html = f'<span class="logo">{logo}</span> ' if logo else ""
+    return f'<div class="section {tone}"><div class="section-head">{logo_html}{_esc(title)}</div>'
+
+
+def _hr_zones_section(laps: list[dict], hr_series, max_hr, sport: str) -> str:
     zones_svg = ""
     if hr_series is not None and not hr_series.empty:
         zones_svg = svg_hr_zones(hr_series, max_hr=max_hr)
@@ -506,32 +575,46 @@ def _hr_zones_section(laps: list[dict], hr_series, max_hr) -> str:
     if not zones_svg:
         return ""
     return (
-        f'<div class="section"><div class="section-head">Heart Rate Zones</div>'
+        f'{_section_open("Heart Rate Zones", sport)}'
         f'<div class="chart-wrap">{zones_svg}</div></div>'
     )
 
 
-def _run_body(laps: list[dict], hr_series, max_hr) -> str:
+def _telemetry_section(
+    telemetry_df: pd.DataFrame | None,
+    sport: str,
+    *,
+    total_duration_s: float | None = None,
+) -> str:
+    if telemetry_df is None or telemetry_df.empty:
+        return ""
+    charts = svg_telemetry_stack(telemetry_df, sport, total_duration_s=total_duration_s)
+    if not charts:
+        return ""
+    return (
+        f'{_section_open("Telemetry", sport)}'
+        f'<div class="chart-wrap"><div class="telemetry-stack">{charts}</div></div></div>'
+    )
+
+
+def _run_body(laps: list[dict], hr_series, max_hr, sport: str) -> str:
     parts = []
-    zones = _hr_zones_section(laps, hr_series, max_hr)
+    zones = _hr_zones_section(laps, hr_series, max_hr, sport)
     if zones:
         parts.append(zones)
 
     chart = svg_pace_workout_chart(laps)
     if chart:
         parts.append(
-            f'<div class="section"><div class="section-head">Workout Analysis</div>'
+            f'{_section_open("Workout Analysis", sport)}'
             f'<div class="chart-wrap">{chart}</div></div>'
         )
-    splits = svg_run_splits_table(laps)
-    if splits:
-        parts.append(f'<div class="section"><div class="section-head">Splits</div>{splits}</div>')
     return "".join(parts)
 
 
-def _bike_body(laps: list[dict], power_profile: dict | None, hr_series, max_hr) -> str:
+def _bike_body(laps: list[dict], power_profile: dict | None, hr_series, max_hr, sport: str) -> str:
     parts = []
-    zones = _hr_zones_section(laps, hr_series, max_hr)
+    zones = _hr_zones_section(laps, hr_series, max_hr, sport)
     if zones:
         parts.append(zones)
 
@@ -540,24 +623,31 @@ def _bike_body(laps: list[dict], power_profile: dict | None, hr_series, max_hr) 
         curve_svg = svg_power_curve(curve)
         if curve_svg:
             parts.append(
-                f'<div class="section"><div class="section-head">'
-                f'<span class="logo">&gt;</span> Power Curve</div>'
+                f'{_section_open("Power Curve", sport, logo="&gt;")}'
                 f'<div class="chart-wrap">{curve_svg}</div></div>'
             )
         skills_svg = svg_power_skills(curve)
         if skills_svg:
             parts.append(
-                f'<div class="section"><div class="section-head">Power Skills</div>'
+                f'{_section_open("Power Skills", sport)}'
                 f'<div class="chart-wrap">{skills_svg}</div></div>'
             )
     return "".join(parts)
 
 
-def _swim_body(laps: list[dict]) -> str:
-    splits = svg_swim_splits_table(laps)
-    if not splits:
+def _splits_section(laps: list[dict], sport: str) -> str:
+    if not laps:
         return ""
-    return f'<div class="section"><div class="section-head">Splits</div>{splits}</div>'
+    sport = sport.lower()
+    if sport == "running":
+        table = svg_run_splits_table(laps)
+    elif sport == "cycling":
+        table = svg_bike_np_splits_table(laps)
+    else:
+        table = svg_swim_splits_table(laps)
+    if not table:
+        return ""
+    return f'{_section_open("Splits", sport)}{table}</div>'
 
 
 def _structure_summary(activity_row) -> str | None:
@@ -623,6 +713,7 @@ def build_activity_report_html(
     power_profile: dict | None = None,
     hr_series: pd.Series | None = None,
     track_points: list | None = None,
+    telemetry_df: pd.DataFrame | None = None,
 ) -> str:
     sport = resolve_sport(activity_row)
     sport_label = {"running": "Run", "cycling": "Ride", "swimming": "Swim"}.get(sport, sport.title())
@@ -631,17 +722,28 @@ def build_activity_report_html(
     effect_label = _effect_label(activity_row)
     structure_summary = _structure_summary(activity_row)
 
-    summary_metrics = _activity_summary_metrics(activity_row, sport)
+    summary_metrics = _activity_summary_metrics(
+        activity_row,
+        sport,
+        avg_power_w=_avg_power_from_telemetry(telemetry_df),
+    )
     max_hr = activity_row.get("maxHR")
+    duration = activity_row.get("duration")
+    total_duration_s = float(duration) if duration is not None and not pd.isna(duration) else None
 
     if sport == "running":
-        sport_body = _run_body(laps, hr_series, max_hr)
+        sport_body = _run_body(laps, hr_series, max_hr, sport)
     elif sport == "cycling":
-        sport_body = _bike_body(laps, power_profile, hr_series, max_hr)
+        sport_body = _bike_body(laps, power_profile, hr_series, max_hr, sport)
     else:
-        sport_body = _swim_body(laps)
+        sport_body = ""
 
+    telemetry_html = _telemetry_section(telemetry_df, sport, total_duration_s=total_duration_s)
+    splits_html = _splits_section(laps, sport)
+
+    # TODO: re-enable split list comparison blocks when list aggregates are wired up again.
     lists_html = _list_blocks_html(list_aggregates or [], laps, sport)
+    lists_html = ""
     intro_html, uses_leaflet = _intro_html(
         activity_row,
         sport_label,
@@ -660,7 +762,7 @@ def build_activity_report_html(
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <title>{_esc(title)}</title>
   {leaflet_head}
-  <style>{STRAVA_CSS}</style>
+  <style>{REPORT_CSS}</style>
 </head>
 <body>
   <div class="phone">
@@ -668,6 +770,8 @@ def build_activity_report_html(
     {_metrics_grid(summary_metrics)}
     {sport_body}
     {lists_html}
+    {telemetry_html}
+    {splits_html}
     <div class="footer">Garmin Analytics</div>
   </div>
 </body>

@@ -151,11 +151,21 @@ a {
   box-shadow: var(--card-shadow);
 }
 
-.surface.tone-hero {
+.surface.tone-hero,
+.section-card.tone-hero {
   background:
-    linear-gradient(165deg, rgba(255, 107, 44, 0.07) 0%, transparent 45%),
+    linear-gradient(165deg, rgba(255, 107, 44, 0.10) 0%, rgba(255, 107, 44, 0.02) 42%, transparent 70%),
     var(--bg-card);
-  border-color: rgba(255, 107, 44, 0.12);
+  border-color: rgba(255, 107, 44, 0.16);
+  box-shadow: var(--card-shadow), 0 0 48px rgba(255, 107, 44, 0.07);
+}
+
+.section-card.tone-accent {
+  background:
+    linear-gradient(165deg, rgba(139, 92, 246, 0.12) 0%, rgba(99, 102, 241, 0.04) 42%, transparent 70%),
+    var(--bg-card);
+  border-color: rgba(167, 139, 250, 0.16);
+  box-shadow: var(--card-shadow), 0 0 48px rgba(139, 92, 246, 0.08);
 }
 
 .section-card.tone-swim,
@@ -575,6 +585,20 @@ a {
   box-shadow: none;
 }
 
+.segmented.segmented--orange button.active {
+  background: linear-gradient(135deg, #ff9f66 0%, #ff6b2c 46%, #e85d04 100%);
+  color: #fff;
+  font-weight: 600;
+  box-shadow: 0 2px 14px rgba(255, 107, 44, 0.42);
+}
+
+.segmented.segmented--purple button.active {
+  background: var(--accent-gradient);
+  color: #fff;
+  font-weight: 600;
+  box-shadow: 0 2px 14px var(--accent-glow);
+}
+
 .activity-list {
   display: flex;
   flex-direction: column;
@@ -836,6 +860,116 @@ a {
   cursor: pointer;
   font-weight: 500;
   font-size: 0.82rem;
+}
+
+.btn-secondary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.activity-detail-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.btn-share-link {
+  flex-shrink: 0;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text-secondary);
+  border-radius: var(--radius-pill);
+  padding: 4px 10px;
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.btn-share-link:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.btn-share-link:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.share-link-panel {
+  margin: 0 0 12px;
+}
+
+.share-link-actions {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.share-link-note {
+  margin: 0 0 6px;
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+
+.share-link-note strong {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.share-link-input {
+  flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-size: 0.68rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.btn-share-copy {
+  flex-shrink: 0;
+  border: 1px solid var(--border-strong);
+  background: var(--accent-dim);
+  color: var(--accent);
+  border-radius: var(--radius-sm);
+  padding: 0 12px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.btn-share-copy:hover {
+  border-color: var(--accent);
+}
+
+.share-link-copy-failed {
+  margin: 0 0 6px;
+  font-size: 0.65rem;
+  color: var(--orange);
+}
+
+.share-link-open {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.share-link-open:hover {
+  text-decoration: underline;
 }
 
 .race-card {
@@ -1293,20 +1427,20 @@ a {
 .activity-detail-meta {
   font-size: 0.72rem;
   color: var(--text-muted);
-  margin-bottom: 12px;
   line-height: 1.4;
+  min-width: 0;
 }
 
 .activity-structure-summary {
-  margin: 0 0 10px;
-  padding: 14px 16px;
-  border: 1px solid rgba(255, 107, 44, 0.16);
-  border-radius: var(--radius-xl);
-  background: var(--bg-card);
+  margin: 0 0 12px;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
   color: var(--text-secondary);
   font-size: 0.78rem;
   line-height: 1.45;
-  box-shadow: var(--card-shadow);
+  box-shadow: none;
 }
 
 .activity-structure-summary strong,

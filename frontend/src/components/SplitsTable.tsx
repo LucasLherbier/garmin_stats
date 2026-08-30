@@ -34,8 +34,30 @@ function columnOrder(columns: string[]): string[] {
   return [...preferred, ...rest];
 }
 
-function formatCell(value: unknown): string {
+function formatSplitCell(column: string, value: unknown): string {
   if (value == null) return '—';
+
+  if (column === 'Moving Time') {
+    if (typeof value === 'number') {
+      if (!Number.isFinite(value)) return '—';
+      return String(Math.round(value));
+    }
+    return String(value).replace(/\.\d+$/, '');
+  }
+
+  if (column === 'Time') {
+    if (typeof value === 'number') {
+      if (!Number.isFinite(value)) return '—';
+      return value.toFixed(1);
+    }
+    const text = String(value);
+    const match = text.match(/^(.+?)(\.\d+)?$/);
+    if (!match) return text;
+    if (!match[2]) return text;
+    const fraction = match[2].slice(1);
+    return `${match[1]}.${fraction.charAt(0) ?? '0'}`;
+  }
+
   if (typeof value === 'number') {
     if (!Number.isFinite(value)) return '—';
     return Number.isInteger(value) ? String(value) : value.toFixed(2);
@@ -66,7 +88,7 @@ export function SplitsTable({ rows, title }: SplitsTableProps) {
             {rows.map((row, i) => (
               <tr key={i}>
                 {columns.map((col) => (
-                  <td key={col}>{formatCell(row[col])}</td>
+                  <td key={col}>{formatSplitCell(col, row[col])}</td>
                 ))}
               </tr>
             ))}

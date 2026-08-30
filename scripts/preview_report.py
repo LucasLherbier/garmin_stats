@@ -15,14 +15,9 @@ if str(_ROOT) not in sys.path:
 
 load_dotenv(_ROOT / ".env")
 
-import pandas as pd
-
 from actions.activity_splits import parse_laps_field, resolve_sport
-from actions.parse_tcx_csv import parse_tcx_to_dataframe
-from actions.power_curve import power_profile_from_fit, power_profile_from_telemetry
+from actions.report_assets import load_report_assets
 from actions.report_html import build_activity_report_html, build_list_aggregates
-from actions.report_map import gpx_track_points
-from tabs.tab_report import _load_report_assets
 from utils import sql_queries as sql
 from utils.utils_gcp import query_bigquery_live
 
@@ -81,7 +76,7 @@ def main() -> int:
                 laps, list_picks, sport, list_names=args.list_names
             )
 
-    power_profile, hr_series, track_points = _load_report_assets(
+    power_profile, hr_series, track_points, telemetry_df = load_report_assets(
         args.activity_id, detail.get("startTimeLocal"), sport
     )
 
@@ -92,6 +87,7 @@ def main() -> int:
         power_profile=power_profile,
         hr_series=hr_series,
         track_points=track_points,
+        telemetry_df=telemetry_df,
     )
 
     out = args.out or Path.home() / "Downloads" / f"report_{args.activity_id}_preview.html"

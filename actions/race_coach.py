@@ -9,7 +9,6 @@ import time
 from typing import Any
 
 import pandas as pd
-import streamlit as st
 
 from actions import utils as ut
 from utils.pipeline.workout_summaries.lap_analysis import format_lap_table
@@ -109,12 +108,6 @@ Cover: swim/bike/run balance vs recent load, key quality sessions, recovery/rest
 
 
 def get_gemini_api_key() -> str | None:
-    try:
-        key = st.secrets.get("GEMINI_API_KEY")
-        if key:
-            return str(key).strip()
-    except Exception:
-        pass
     key = os.getenv("GEMINI_API_KEY", "").strip()
     return key or None
 

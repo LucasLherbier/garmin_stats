@@ -684,6 +684,26 @@ def get_race_wellness_by_granularity_query(start_date, end_date, granularity):
     """
 
 
+def get_race_wellness_daily_query(start_date, end_date):
+    return f"""
+    SELECT
+        day AS time_period,
+        sleep_score AS avg_sleep_score,
+        hrv_last_night_avg AS avg_hrv,
+        resting_hr AS avg_resting_hr,
+        body_battery_high AS avg_body_battery_high,
+        body_battery_low AS avg_body_battery_low,
+        avg_stress AS avg_stress,
+        sleep_duration_sec AS avg_sleep_duration_sec,
+        1 AS day_count
+    FROM {DAILY_WELLNESS}
+    WHERE day >= DATE('{start_date}')
+      AND day <= DATE('{end_date}')
+      AND extract_status IN ('ok', 'partial')
+    ORDER BY day;
+    """
+
+
 def get_race_activities_query(start_date, end_date, sport_types):
     if len(sport_types) == 1:
         sport_filter = f"act.activityTypeGrouped = '{sport_types[0]}'"

@@ -14,8 +14,8 @@ from utils.pipeline.workout_summaries.parse_laps import cycling_lap_power_w, for
 
 
 LIST_COLORS = [
-    "#fc5200", "#3b82f6", "#22c55e", "#eab308", "#a855f7",
-    "#ec4899", "#14b8a6", "#f97316", "#6366f1", "#84cc16",
+    "#a78bfa", "#ff6b2c", "#2dd4bf", "#f5c14a", "#6366f1",
+    "#c084fc", "#14b8a6", "#fb7185", "#818cf8", "#4ade80",
 ]
 
 # Backwards-compatible alias
@@ -66,7 +66,7 @@ def svg_pace_workout_chart(laps: list[dict], width: int = 380, height: int = 240
         cx = x + bar_w / 2
         bars.append(
             f'<rect x="{x:.1f}" y="{y_top:.1f}" width="{max(bar_w - 1, 2):.1f}" '
-            f'height="{bar_h:.1f}" rx="2" fill="#7eb8e6" opacity="1"/>'
+            f'height="{bar_h:.1f}" rx="2" fill="#a78bfa" opacity="1"/>'
         )
         x += bar_w
 
@@ -76,18 +76,18 @@ def svg_pace_workout_chart(laps: list[dict], width: int = 380, height: int = 240
         y = y_pos(pace_val)
         tick_lines.append(
             f'<line x1="{margin["l"]}" y1="{y:.1f}" x2="{width - margin["r"]}" y2="{y:.1f}" '
-            f'stroke="#ececec" stroke-width="1"/>'
+            f'stroke="rgba(255,255,255,0.08)" stroke-width="1"/>'
         )
         tick_lines.append(
             f'<text x="{margin["l"] - 6}" y="{y + 4:.1f}" text-anchor="end" '
-            f'font-size="10" fill="#999">{_fmt_pace_short(pace_val)}</text>'
+            f'font-size="10" fill="#71717a">{_fmt_pace_short(pace_val)}</text>'
         )
 
     return f"""
     <svg viewBox="0 0 {width} {height}" width="100%" height="{height}" xmlns="http://www.w3.org/2000/svg">
       {''.join(tick_lines)}
       <line x1="{margin['l']}" y1="{avg_y:.1f}" x2="{width - margin['r']}" y2="{avg_y:.1f}"
-            stroke="#bbb" stroke-width="1" stroke-dasharray="4 3"/>
+            stroke="#71717a" stroke-width="1" stroke-dasharray="4 3"/>
       {''.join(bars)}
     </svg>"""
 
@@ -111,12 +111,12 @@ def svg_run_splits_table(laps: list[dict], *, show_hr: bool = False, bar_color: 
             if bar_color:
                 row_color = bar_color
             elif pace_s <= fastest * 1.05:
-                row_color = "#7eb8e6"
+                row_color = "#a78bfa"
             else:
-                row_color = "#c5dff5"
+                row_color = "#6366f1"
         else:
             bar_pct = 35
-            row_color = bar_color or "#e5e7eb"
+            row_color = bar_color or "#3f3f46"
 
         hr_cell = ""
         if show_hr:
@@ -152,7 +152,7 @@ def svg_run_list_splits_table(laps: list[dict], *, bar_color: str | None = None)
     rows_html = []
     paces = [lap.get("avg_pace_s_km") for lap in laps if lap.get("avg_pace_s_km")]
     fastest = min(paces) if paces else None
-    row_color = bar_color or "#7eb8e6"
+    row_color = bar_color or "#a78bfa"
 
     for lap in laps:
         dur_s = _lap_duration_s(lap)
@@ -213,12 +213,12 @@ def svg_bike_np_splits_table(laps: list[dict], *, bar_color: str | None = None) 
             if bar_color:
                 row_color = bar_color
             elif intensity >= 0.85:
-                row_color = "#9b59b6"
+                row_color = "#ff6b2c"
             else:
-                row_color = "#c4b5fd"
+                row_color = "#ff8f5c"
         else:
             bar_pct = 35
-            row_color = bar_color or "#e5e7eb"
+            row_color = bar_color or "#3f3f46"
 
         rows_html.append(
             f"""<tr>
@@ -277,7 +277,7 @@ def svg_hr_zones_from_seconds(
     if total <= 0:
         return ""
 
-    colors = ["#fde8ef", "#f8c4d8", "#e898bc", "#c96aa8", "#9b59b6", "#6b2d84", "#1f1f1f"]
+    colors = ["#312e81", "#4338ca", "#6366f1", "#818cf8", "#a78bfa", "#c084fc", "#e9d5ff"]
     margin = dict(l=8, r=8, t=8, b=36)
     bar_h = 56
     x = margin["l"]
@@ -299,11 +299,11 @@ def svg_hr_zones_from_seconds(
         if pct >= 3:
             labels.append(
                 f'<text x="{cx:.1f}" y="{margin["t"] + bar_h + 16}" text-anchor="middle" '
-                f'font-size="11" fill="#666">Z{i + 1}</text>'
+                f'font-size="11" fill="#a1a1aa">Z{i + 1}</text>'
             )
             labels.append(
                 f'<text x="{cx:.1f}" y="{margin["t"] + bar_h + 30}" text-anchor="middle" '
-                f'font-size="9" fill="#999">{pct}%</text>'
+                f'font-size="9" fill="#71717a">{pct}%</text>'
             )
         x += w
 
@@ -381,11 +381,11 @@ def svg_power_curve(power_curve: dict[str, float | None], width: int = 380, heig
         y = py(tick)
         grid.append(
             f'<line x1="{margin["l"]}" y1="{y:.1f}" x2="{width - margin["r"]}" y2="{y:.1f}" '
-            f'stroke="#ececec" stroke-width="1"/>'
+            f'stroke="rgba(255,255,255,0.08)" stroke-width="1"/>'
         )
         grid.append(
             f'<text x="{margin["l"] - 5}" y="{y + 3.5:.1f}" text-anchor="end" '
-            f'font-size="10" fill="#999">{tick}</text>'
+            f'font-size="10" fill="#71717a">{tick}</text>'
         )
 
     # Vertical grid at each duration tick
@@ -393,21 +393,21 @@ def svg_power_curve(power_curve: dict[str, float | None], width: int = 380, heig
         x = px(sec)
         grid.append(
             f'<line x1="{x:.1f}" y1="{margin["t"]}" x2="{x:.1f}" y2="{base_y:.1f}" '
-            f'stroke="#ececec" stroke-width="1"/>'
+            f'stroke="rgba(255,255,255,0.08)" stroke-width="1"/>'
         )
 
     # Axis box
     grid.append(
         f'<line x1="{margin["l"]}" y1="{margin["t"]}" x2="{margin["l"]}" y2="{base_y:.1f}" '
-        f'stroke="#d4d4d4" stroke-width="1"/>'
+        f'stroke="rgba(255,255,255,0.12)" stroke-width="1"/>'
     )
     grid.append(
         f'<line x1="{margin["l"]}" y1="{base_y:.1f}" x2="{width - margin["r"]}" y2="{base_y:.1f}" '
-        f'stroke="#d4d4d4" stroke-width="1"/>'
+        f'stroke="rgba(255,255,255,0.12)" stroke-width="1"/>'
     )
     grid.append(
         f'<text x="{margin["l"] - 2}" y="{base_y + 14:.1f}" text-anchor="end" '
-        f'font-size="10" fill="#999">W</text>'
+        f'font-size="10" fill="#71717a">W</text>'
     )
 
     path = "M " + " L ".join(f"{px(s):.1f},{py(w):.1f}" for s, w, _ in points)
@@ -415,15 +415,15 @@ def svg_power_curve(power_curve: dict[str, float | None], width: int = 380, heig
     for sec, _, label in points:
         tick_labels.append(
             f'<text x="{px(sec):.1f}" y="{height - 6}" text-anchor="middle" '
-            f'font-size="9" fill="#888">{label}</text>'
+            f'font-size="9" fill="#71717a">{label}</text>'
         )
 
     return f"""
     <svg viewBox="0 0 {width} {height}" width="100%" height="{height}" xmlns="http://www.w3.org/2000/svg">
-      <rect x="{margin['l']}" y="{margin['t']}" width="{inner_w}" height="{inner_h}" fill="#fafafa"/>
+      <rect x="{margin['l']}" y="{margin['t']}" width="{inner_w}" height="{inner_h}" fill="#12121a"/>
       {''.join(grid)}
-      <path d="{path}" fill="none" stroke="#5b21b6" stroke-width="2.5"/>
-      {''.join(f'<circle cx="{px(s):.1f}" cy="{py(w):.1f}" r="3.5" fill="#5b21b6"/>' for s, w, _ in points)}
+      <path d="{path}" fill="none" stroke="#a78bfa" stroke-width="2.5"/>
+      {''.join(f'<circle cx="{px(s):.1f}" cy="{py(w):.1f}" r="3.5" fill="#a78bfa"/>' for s, w, _ in points)}
       {''.join(tick_labels)}
     </svg>"""
 
@@ -527,16 +527,170 @@ def svg_power_skills(power_curve: dict[str, float | None], width: int = 380, hei
         labels_svg.append(
             f'<text x="{lx:.1f}" y="{ly:.1f}" text-anchor="{anchor}" font-size="{font_size}" fill="{color}">'
             f'<tspan font-weight="700">{label}</tspan>'
-            f'<tspan fill="#333" font-weight="600"> {int(watts)}W</tspan></text>'
+            f'<tspan fill="#f5f5f7" font-weight="600"> {int(watts)}W</tspan></text>'
         )
 
     poly = " ".join(polygon_pts)
     return f"""
     <svg viewBox="0 0 {width} {height}" width="100%" height="{height}" xmlns="http://www.w3.org/2000/svg" overflow="visible">
       {''.join(grid_svg)}
-      <polygon points="{poly}" fill="rgba(91,33,182,0.18)" stroke="#5b21b6" stroke-width="2"/>
+      <polygon points="{poly}" fill="rgba(167,139,250,0.18)" stroke="#a78bfa" stroke-width="2"/>
       {''.join(labels_svg)}
     </svg>"""
+
+
+def _prepare_telemetry(times: pd.Series, values: pd.Series, max_points: int = 320) -> tuple[pd.Series, pd.Series]:
+    """Align telemetry on elapsed seconds from workout start; downsample full ride evenly."""
+    ts = pd.to_datetime(times, errors="coerce")
+    vals = pd.to_numeric(values, errors="coerce")
+    if ts.empty or ts.isna().all():
+        return pd.Series(dtype=float), pd.Series(dtype=float)
+
+    elapsed = (ts - ts.iloc[0]).dt.total_seconds()
+    frame = pd.DataFrame({"elapsed": elapsed, "value": vals}).dropna(subset=["elapsed"])
+    if frame.empty:
+        return pd.Series(dtype=float), pd.Series(dtype=float)
+
+    if len(frame) > max_points:
+        # Evenly sample across the whole activity, not just the opening segment.
+        idx = np.linspace(0, len(frame) - 1, max_points, dtype=int)
+        frame = frame.iloc[idx].reset_index(drop=True)
+
+    return frame["elapsed"].reset_index(drop=True), frame["value"].reset_index(drop=True)
+
+
+def _elapsed_tick_labels(max_elapsed_s: float, count: int = 4) -> list[tuple[float, str]]:
+    """Return (x-fraction, label) pairs for elapsed-time axis ticks."""
+    if max_elapsed_s <= 0:
+        return []
+    labels = []
+    for i in range(count):
+        frac = i / max(count - 1, 1)
+        sec = frac * max_elapsed_s
+        label = format_duration(sec) or "0:00"
+        labels.append((frac, label))
+    return labels
+
+
+def svg_telemetry_line(
+    times: pd.Series,
+    values: pd.Series,
+    *,
+    label: str,
+    unit: str = "",
+    color: str = "#a78bfa",
+    width: int = 380,
+    height: int = 140,
+    total_duration_s: float | None = None,
+) -> str:
+    """Single-metric telemetry line chart (x-axis = elapsed time from start)."""
+    elapsed, v = _prepare_telemetry(times, values)
+    valid = v.notna()
+    elapsed = elapsed[valid].reset_index(drop=True)
+    v = v[valid].reset_index(drop=True)
+    if len(elapsed) < 2:
+        return ""
+
+    data_max = float(elapsed.max()) if len(elapsed) else 0.0
+    max_elapsed = max(data_max, float(total_duration_s or 0)) or data_max or 1.0
+    y_min = float(v.min())
+    y_max = float(v.max())
+    pad = max((y_max - y_min) * 0.08, 1)
+    y_min -= pad
+    y_max += pad
+
+    margin = dict(l=40, r=10, t=28, b=24)
+    inner_w = width - margin["l"] - margin["r"]
+    inner_h = height - margin["t"] - margin["b"]
+
+    def px(elapsed_s: float) -> float:
+        return margin["l"] + inner_w * (float(elapsed_s) / max_elapsed)
+
+    def py(val: float) -> float:
+        ratio = (val - y_min) / (y_max - y_min) if y_max > y_min else 0.5
+        return margin["t"] + inner_h * (1 - ratio)
+
+    grid = []
+    for tick in _nice_y_ticks(y_min, y_max, count=4):
+        y = py(tick)
+        grid.append(
+            f'<line x1="{margin["l"]}" y1="{y:.1f}" x2="{width - margin["r"]}" y2="{y:.1f}" '
+            f'stroke="rgba(255,255,255,0.06)" stroke-width="1"/>'
+        )
+        suffix = f" {unit}" if unit else ""
+        grid.append(
+            f'<text x="{margin["l"] - 5}" y="{y + 3.5:.1f}" text-anchor="end" '
+            f'font-size="9" fill="#71717a">{tick}{suffix}</text>'
+        )
+
+    path_pts = " L ".join(
+        f"{px(float(elapsed.iloc[i])):.1f},{py(float(v.iloc[i])):.1f}" for i in range(len(elapsed))
+    )
+    area_pts = (
+        f"M {px(float(elapsed.iloc[0])):.1f},{margin['t'] + inner_h:.1f} L {path_pts} "
+        f"L {px(float(elapsed.iloc[-1])):.1f},{margin['t'] + inner_h:.1f} Z"
+    )
+
+    x_labels = []
+    for frac, lbl in _elapsed_tick_labels(max_elapsed):
+        x = margin["l"] + inner_w * frac
+        x_labels.append(
+            f'<text x="{x:.1f}" y="{height - 4}" text-anchor="middle" '
+            f'font-size="9" fill="#71717a">{lbl}</text>'
+        )
+
+    return f"""
+    <div class="telemetry-chart">
+      <div class="telemetry-chart-title">{label}</div>
+      <svg viewBox="0 0 {width} {height}" width="100%" height="{height}" xmlns="http://www.w3.org/2000/svg">
+        {''.join(grid)}
+        <path d="{area_pts}" fill="{color}" opacity="0.12"/>
+        <path d="M {path_pts}" fill="none" stroke="{color}" stroke-width="2"/>
+        {''.join(x_labels)}
+      </svg>
+    </div>"""
+
+
+def svg_telemetry_stack(
+    df: pd.DataFrame,
+    sport: str,
+    *,
+    width: int = 380,
+    total_duration_s: float | None = None,
+) -> str:
+    """Stacked telemetry charts: HR, Altitude, Power (bike) or Pace (run)."""
+    if df is None or df.empty or "Time" not in df.columns:
+        return ""
+
+    sport = sport.lower()
+    times = df["Time"]
+    charts: list[str] = []
+    line_kw = dict(width=width, total_duration_s=total_duration_s)
+
+    if "HeartRate" in df.columns:
+        chart = svg_telemetry_line(times, df["HeartRate"], label="Heart Rate", unit="bpm", color="#a78bfa", **line_kw)
+        if chart:
+            charts.append(chart)
+
+    if "Altitude" in df.columns:
+        chart = svg_telemetry_line(times, df["Altitude"], label="Altitude", unit="m", color="#6366f1", **line_kw)
+        if chart:
+            charts.append(chart)
+
+    if sport == "cycling" and "Watts" in df.columns:
+        chart = svg_telemetry_line(times, df["Watts"], label="Power", unit="W", color="#ff6b2c", **line_kw)
+        if chart:
+            charts.append(chart)
+    elif sport == "running" and "Speed" in df.columns:
+        speed = pd.to_numeric(df["Speed"], errors="coerce")
+        pace = speed.where(speed > 0.1, np.nan).apply(lambda s: 1000.0 / float(s))
+        chart = svg_telemetry_line(times, pace, label="Pace", unit="s/km", color="#a78bfa", **line_kw)
+        if chart:
+            charts.append(chart)
+
+    if not charts:
+        return ""
+    return "".join(charts)
 
 
 def svg_swim_splits_table(laps: list[dict]) -> str:

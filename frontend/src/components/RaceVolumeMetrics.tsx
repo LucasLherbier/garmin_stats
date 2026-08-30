@@ -47,9 +47,9 @@ export function RaceVolumeMetrics({
   ];
 
   const row2 = [
-    { key: 'swim', label: 'Swim', value: selected.swim, icon: 'swim' as const, tint: 'swim' as const },
-    { key: 'bike', label: 'Bike', value: selected.bike, icon: 'bike' as const, tint: 'bike' as const },
-    { key: 'run', label: 'Run', value: selected.run, icon: 'run' as const, tint: 'run' as const },
+    { key: 'swim', label: 'Swim', value: selected.swim, icon: 'swim' as const, tint: 'hero' as const },
+    { key: 'bike', label: 'Bike', value: selected.bike, icon: 'bike' as const, tint: 'hero' as const },
+    { key: 'run', label: 'Run', value: selected.run, icon: 'run' as const, tint: 'hero' as const },
   ];
 
   return (
@@ -58,6 +58,7 @@ export function RaceVolumeMetrics({
         options={VOLUME_TAB_OPTIONS}
         value={volumeKey}
         onChange={onVolumeKeyChange}
+        variant="orange"
       />
       <div className="sport-summary-metrics">
         {[row1, row2].map((row, index) => (
