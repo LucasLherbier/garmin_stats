@@ -17,10 +17,23 @@ from actions.cycling_splits import (
 from utils.pipeline.workout_summaries.parse_laps import format_duration, format_pace
 
 
+def _canonical_sport(value: str) -> str:
+    sport = str(value or "").lower().strip()
+    if "run" in sport:
+        return "running"
+    if "cycl" in sport or "bike" in sport:
+        return "cycling"
+    if "swim" in sport:
+        return "swimming"
+    return sport
+
+
 def resolve_sport(activity_row, summary_sport: str | None = None) -> str:
     sport = summary_sport or activity_row.get("sport") or activity_row.get("summary_sport")
     if sport:
-        return str(sport).lower()
+        canonical = _canonical_sport(str(sport))
+        if canonical in {"running", "cycling", "swimming"}:
+            return canonical
     grouped = str(activity_row.get("activityTypeGrouped") or "").lower()
     if "run" in grouped:
         return "running"
@@ -28,7 +41,7 @@ def resolve_sport(activity_row, summary_sport: str | None = None) -> str:
         return "cycling"
     if "swim" in grouped:
         return "swimming"
-    return grouped or "unknown"
+    return _canonical_sport(grouped) or "unknown"
 
 
 def _swim_duration_s(lap: dict) -> float:

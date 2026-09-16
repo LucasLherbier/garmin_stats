@@ -28,6 +28,37 @@ def _lap_duration_s(lap: dict) -> float:
     return float(lap.get("moving_time_s") or lap.get("time_s") or 0)
 
 
+def _csv_float(value: Any) -> float | None:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    if pd.isna(parsed):
+        return None
+    return parsed
+
+
+def power_from_csv(df: pd.DataFrame) -> tuple[float | None, float | None]:
+    """Return (avg_power_w, avg_np_w) from a Garmin lap CSV (Summary row preferred)."""
+    if df is None or df.empty or "Split" not in df.columns:
+        return None, None
+
+    summary_mask = df["Split"].astype(str).str.strip().str.lower() == "summary"
+    if summary_mask.any():
+        row = df.loc[summary_mask].iloc[0]
+        return _csv_float(row.get("Avg Power")), _csv_float(row.get("Normalized Power"))
+
+    from utils.pipeline.workout_summaries.parse_laps import normalize_laps_from_csv
+
+    laps, _ = normalize_laps_from_csv(df, "cycling")
+    if not laps:
+        return None, None
+    agg = aggregate_selected_laps(laps, list(range(len(laps))))
+    return agg.get("avg_power_w"), agg.get("avg_np_w")
+
+
 def _weighted_mean(laps: list[dict], getter) -> float | None:
     """Duration-weighted average (not a simple arithmetic mean)."""
     weighted_sum = 0.0

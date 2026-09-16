@@ -1,28 +1,18 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-
+import pandas as pd
 
 from actions import utils as ut
-
 from actions.race_metrics import (
-
     analysis_end_date,
-
     build_race_summary_payload,
-
     build_wellness_payload,
-
     race_options,
-
+    resolve_race,
 )
-
 from api.deps import get_query_fn
-
-from api.serializers import safe_float, safe_int
-
+from api.serializers import safe_float, safe_int, safe_str, sanitize_payload
 from utils import sql_queries as sql
-
-from utils.pipeline.preprocess_activities import TRAINING_RACE_PERIODS
 
 
 
@@ -75,7 +65,9 @@ def _swim_pace_from_speed(avg_speed: float) -> str:
     return f"{p_m}:{p_s:02d} /100m"
 
 
-
+def _paginate_rows(df: pd.DataFrame, page_size: int) -> tuple[pd.DataFrame, bool]:
+    has_more = len(df) > page_size
+    return df.iloc[:page_size], has_more
 
 
 @router.get("/races")
@@ -85,18 +77,15 @@ def list_races():
     return {"races": race_options()}
 
 
-
-
-
-@router.get("/{race_index}/activities")
+@router.get("/{race_key}/activities")
 
 def race_activities(
 
-    race_index: int,
+    race_key: str,
 
     sport: str = Query("swimming", pattern="^(swimming|cycling|running|gym)$"),
 
-    page: int = Query(1, ge=1),
+    offset: int = Query(0, ge=0),
 
     page_size: int = Query(5, ge=1, le=50, alias="pageSize"),
 
@@ -104,23 +93,24 @@ def race_activities(
 
 ):
 
-    races = TRAINING_RACE_PERIODS[::-1]
-
-    if race_index < 0 or race_index >= len(races):
-
-        raise HTTPException(status_code=404, detail="Race not found")
-
-
-
-    race = races[race_index]
+    try:
+        race_index, race = resolve_race(race_key)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="Race not found") from exc
 
     end_date = analysis_end_date(race)
 
     sport_types = RACE_ACTIVITY_SPORTS[sport]
 
-
-
-    df = query(sql.get_race_activities_query(race["start"], end_date, sport_types))
+    df = query(
+        sql.get_race_activities_query(
+            race["start"],
+            end_date,
+            sport_types,
+            limit=page_size + 1,
+            offset=offset,
+        )
+    )
 
     if df.empty:
 
@@ -128,29 +118,13 @@ def race_activities(
 
             "sport": sport,
 
-            "total": 0,
-
-            "page": page,
+            "offset": offset,
 
             "page_size": page_size,
 
-            "total_pages": 0,
+            "has_more": False,
 
             "activities": [],
-
-            "summary": {
-
-                "distance_km": 0,
-
-                "duration": "0:00:00",
-
-                "sessions": 0,
-
-                "average_hr": 0,
-
-                "elevation_gain_m": 0,
-
-            },
 
         }
 
@@ -160,37 +134,7 @@ def race_activities(
 
         df["Day"] = df["Day"].astype(str).str[:10]
 
-
-
-    total = len(df)
-
-    duration_seconds = float(df["duration"].fillna(0).astype(float).sum())
-
-    hr_series = df["averageHR"].fillna(0).astype(float)
-
-    hr_series = hr_series[hr_series > 0]
-
-    avg_hr = float(hr_series.mean()) if not hr_series.empty else 0
-
-    summary = {
-
-        "distance_km": round(float(df["distance"].fillna(0).astype(float).sum()), 1),
-
-        "duration": ut.format_duration_no_days(duration_seconds),
-
-        "sessions": total,
-
-        "average_hr": int(round(avg_hr)) if avg_hr > 0 else 0,
-
-        "elevation_gain_m": int(float(df["elevationGain"].fillna(0).astype(float).sum())),
-
-    }
-
-    start = (page - 1) * page_size
-
-    page_df = df.iloc[start : start + page_size]
-
-
+    page_df, has_more = _paginate_rows(df, page_size)
 
     items = []
 
@@ -198,7 +142,7 @@ def race_activities(
 
         avg_speed = safe_float(row.get("averageSpeed"))
 
-        grouped_sport = str(row.get("activityTypeGrouped") or sport)
+        grouped_sport = safe_str(row.get("activityTypeGrouped")) or sport
 
         items.append(
 
@@ -206,11 +150,11 @@ def race_activities(
 
                 "activityId": safe_int(row.get("activityId")),
 
-                "day": row.get("Day"),
+                "day": safe_str(row.get("Day")),
 
-                "activityName": row.get("activityName"),
+                "activityName": safe_str(row.get("activityName")),
 
-                "locationName": row.get("locationName"),
+                "locationName": safe_str(row.get("locationName")),
 
                 "distance": safe_float(row.get("distance")),
 
@@ -230,7 +174,7 @@ def race_activities(
 
                 "elevationGain": safe_float(row.get("elevationGain")),
 
-                "trainingEffectLabel": row.get("trainingEffectLabel"),
+                "trainingEffectLabel": safe_str(row.get("trainingEffectLabel")),
 
                 "calories": safe_float(row.get("calories")),
 
@@ -246,29 +190,22 @@ def race_activities(
 
         "sport": sport,
 
-        "total": total,
-
-        "page": page,
+        "offset": offset,
 
         "page_size": page_size,
 
-        "total_pages": max(1, (total + page_size - 1) // page_size) if total else 0,
+        "has_more": has_more,
 
         "activities": items,
-
-        "summary": summary,
 
     }
 
 
-
-
-
-@router.get("/{race_index}")
+@router.get("/{race_key}")
 
 def race_detail(
 
-    race_index: int,
+    race_key: str,
 
     granularity: str = Query("week", pattern="^(week|month)$"),
 
@@ -276,25 +213,20 @@ def race_detail(
 
 ):
 
-    races = TRAINING_RACE_PERIODS[::-1]
-
-    if race_index < 0 or race_index >= len(races):
-
-        raise HTTPException(status_code=404, detail="Race not found")
-
-
-
-    race = races[race_index]
+    try:
+        race_index, race = resolve_race(race_key)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="Race not found") from exc
 
     end_date = analysis_end_date(race)
 
 
 
-    race_metrics_df = query(sql.get_race_metrics_query(race["start"], end_date))
+    race_metrics_df = query(sql.get_race_metrics_query(race["start"], end_date, race["end"]))
 
     if race_metrics_df.empty:
 
-        return {"race_index": race_index, "race": race_options()[race_index], "empty": True}
+        return {"race_index": race_index, "race": race_options()[race_index], "empty": True, "slug": race_options()[race_index]["slug"]}
 
 
 
@@ -346,5 +278,5 @@ def race_detail(
 
     payload["wellness"] = build_wellness_payload(wellness_df, "day")
 
-    return payload
+    return sanitize_payload(payload)
 

@@ -23,6 +23,15 @@ def safe_float(value: Any, default: float = 0.0) -> float:
         return default
 
 
+def safe_str(value: Any, default: str | None = None) -> str | None:
+    if value is None or pd.isna(value):
+        return default
+    text = str(value).strip()
+    if not text or text.lower() == "nan":
+        return default
+    return text
+
+
 def safe_int(value: Any, default: int = 0) -> int:
     if value is None or pd.isna(value):
         return default
@@ -67,3 +76,8 @@ def df_to_records(df: pd.DataFrame) -> list[dict[str, Any]]:
 
 def record_from_series(row: pd.Series) -> dict[str, Any]:
     return {str(k): _serialize_value(v) for k, v in row.items()}
+
+
+def sanitize_payload(value: Any) -> Any:
+    """Recursively convert API payloads to JSON-safe Python types."""
+    return _serialize_value(value)

@@ -1,13 +1,15 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 
 import { api } from '../api/client';
+import { LoadMoreButton } from '../components/LoadMoreButton';
 import { PageHeader } from '../components/PageHeader';
 import { RaceVolumeMetrics, type RaceVolumeKey } from '../components/RaceVolumeMetrics';
 import { SegmentedControl } from '../components/SegmentedControl';
 import { VolumeChart } from '../components/VolumeChart';
 import { VolumeStackChart } from '../components/VolumeStackChart';
 import type { Granularity } from '../types';
+import { activityPath, racePath } from '../utils/paths';
 
 type RaceChartView = 'swimming' | 'cycling' | 'running' | 'volume';
 type RaceActivityTab = 'swimming' | 'cycling' | 'running' | 'gym';
@@ -52,8 +54,7 @@ function formatActivityPace(activity: RaceActivity, tab: RaceActivityTab): strin
 
 function activityDetailPath(activity: RaceActivity, tab: RaceActivityTab): string | null {
   if (tab === 'gym') return null;
-  const prefix = tab === 'swimming' ? 'swim' : tab === 'cycling' ? 'bike' : 'run';
-  return `/${prefix}/activity/${activity.activityId}`;
+  return activityPath(activity.activityId);
 }
 
 function activityCellValues(activity: RaceActivity, tab: RaceActivityTab) {
@@ -81,38 +82,55 @@ function activityColumns(tab: RaceActivityTab) {
   ] as const;
 }
 
+type RaceOption = { index: number; slug: string; display: string };
+
 export function RacePage() {
   const navigate = useNavigate();
-  const [races, setRaces] = useState<Array<{ index: number; display: string }>>([]);
-  const [raceIndex, setRaceIndex] = useState(0);
+  const { raceSlug } = useParams<{ raceSlug?: string }>();
+  const [races, setRaces] = useState<RaceOption[]>([]);
+  const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const [granularity, setGranularity] = useState<Granularity>('week');
   const [chartView, setChartView] = useState<RaceChartView>('swimming');
   const [activityTab, setActivityTab] = useState<RaceActivityTab>('swimming');
   const [volumeKey, setVolumeKey] = useState<RaceVolumeKey>('total');
-  const [activityPage, setActivityPage] = useState(1);
-  const [loading, setLoading] = useState(true);
+  const [listLoading, setListLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [activitiesLoading, setActivitiesLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activitiesError, setActivitiesError] = useState<string | null>(null);
   const [detail, setDetail] = useState<Awaited<ReturnType<typeof api.race.detail>> | null>(null);
-  const [activitiesData, setActivitiesData] = useState<
-    Awaited<ReturnType<typeof api.race.activities>> | null
-  >(null);
+  const [activities, setActivities] = useState<RaceActivity[]>([]);
+  const [hasMoreActivities, setHasMoreActivities] = useState(false);
 
   const activityCols = useMemo(() => activityColumns(activityTab), [activityTab]);
+  const activeRace = useMemo(
+    () => races.find((race) => race.slug === selectedSlug) ?? races[0] ?? null,
+    [races, selectedSlug],
+  );
 
   useEffect(() => {
     api.race
       .list()
-      .then((res) => {
-        setRaces(res.races);
-        if (res.races.length) setRaceIndex(res.races[0].index);
-      })
-      .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load races'));
+      .then((res) => setRaces(res.races))
+      .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load races'))
+      .finally(() => setListLoading(false));
   }, []);
 
   useEffect(() => {
     if (!races.length) return;
+    if (raceSlug) {
+      const match = races.find((race) => race.slug === raceSlug);
+      if (match) {
+        setSelectedSlug(match.slug);
+        return;
+      }
+    }
+    navigate(racePath(races[0].slug), { replace: true });
+  }, [raceSlug, races, navigate]);
+
+  useEffect(() => {
+    if (listLoading || !activeRace) return;
 
     let cancelled = false;
 
@@ -120,7 +138,7 @@ export function RacePage() {
       setLoading(true);
       setError(null);
       try {
-        const result = await api.race.detail(raceIndex, granularity);
+        const result = await api.race.detail(activeRace.slug, granularity);
         if (!cancelled) setDetail(result);
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load');
@@ -133,37 +151,40 @@ export function RacePage() {
     return () => {
       cancelled = true;
     };
-  }, [raceIndex, granularity, races.length]);
+  }, [activeRace?.slug, granularity, listLoading]);
 
-  useEffect(() => {
-    setActivityPage(1);
-  }, [raceIndex, activityTab]);
+  const loadActivities = useCallback(
+    async (offset: number, append: boolean) => {
+      if (!activeRace || detail?.empty) return;
 
-  useEffect(() => {
-    if (!races.length || detail?.empty) return;
-
-    let cancelled = false;
-
-    async function loadActivities() {
-      setActivitiesLoading(true);
+      if (offset === 0) {
+        setActivitiesLoading(true);
+      } else {
+        setLoadingMore(true);
+      }
       setActivitiesError(null);
       try {
-        const result = await api.race.activities(raceIndex, activityTab, activityPage);
-        if (!cancelled) setActivitiesData(result);
+        const result = await api.race.activities(activeRace.slug, activityTab, offset);
+        setActivities((prev) => (append ? [...prev, ...result.activities] : result.activities));
+        setHasMoreActivities(result.has_more);
       } catch (e) {
-        if (!cancelled) {
-          setActivitiesError(e instanceof Error ? e.message : 'Failed to load activities');
-        }
+        setActivitiesError(e instanceof Error ? e.message : 'Failed to load activities');
       } finally {
-        if (!cancelled) setActivitiesLoading(false);
+        if (offset === 0) {
+          setActivitiesLoading(false);
+        } else {
+          setLoadingMore(false);
+        }
       }
-    }
+    },
+    [activeRace, activityTab, detail?.empty],
+  );
 
-    loadActivities();
-    return () => {
-      cancelled = true;
-    };
-  }, [raceIndex, activityTab, activityPage, races.length, detail?.empty]);
+  useEffect(() => {
+    setActivities([]);
+    setHasMoreActivities(false);
+    loadActivities(0, false);
+  }, [loadActivities]);
 
   const activeDistanceChart = useMemo(
     () => detail?.distance_charts.find((chart) => chart.name === chartView),
@@ -183,22 +204,29 @@ export function RacePage() {
     <main className="page">
       <PageHeader title="Race prep" />
 
-      {races.length ? (
+      {races.length && activeRace ? (
         <select
           className="form-field"
-          value={raceIndex}
-          onChange={(e) => setRaceIndex(Number(e.target.value))}
+          value={activeRace.slug}
+          onChange={(e) => {
+            const slug = e.target.value;
+            setSelectedSlug(slug);
+            navigate(racePath(slug));
+          }}
         >
           {races.map((r) => (
-            <option key={r.index} value={r.index}>
+            <option key={r.slug} value={r.slug}>
               {r.display}
             </option>
           ))}
         </select>
       ) : null}
 
-      {loading ? <div className="loading">Loading…</div> : null}
+      {listLoading || loading ? <div className="loading">Loading…</div> : null}
       {error ? <div className="error">{error}</div> : null}
+      {!listLoading && !races.length && !error ? (
+        <div className="empty">No races configured.</div>
+      ) : null}
       {detail?.empty ? <div className="empty">No preparation data for this race.</div> : null}
 
       {detail && !detail.empty ? (
@@ -311,13 +339,13 @@ export function RacePage() {
             <div style={{ height: 10 }} />
             {activitiesLoading ? <div className="loading">Loading activities…</div> : null}
             {activitiesError ? <div className="error">{activitiesError}</div> : null}
-            {!activitiesLoading && activitiesData && !activitiesData.activities.length ? (
+            {!activitiesLoading && !activities.length ? (
               <div className="empty">No activities for this sport in the training block.</div>
             ) : null}
-            {activitiesData?.activities.length ? (
+            {activities.length ? (
               <>
                 <div className="race-activity-list">
-                  {activitiesData.activities.map((activity) => {
+                  {activities.map((activity) => {
                     const detailPath = activityDetailPath(activity, activityTab);
                     const values = activityCellValues(activity, activityTab);
                     return (
@@ -340,27 +368,11 @@ export function RacePage() {
                     );
                   })}
                 </div>
-                {activitiesData.total_pages > 1 ? (
-                  <div className="pagination">
-                    <button
-                      type="button"
-                      disabled={activityPage <= 1}
-                      onClick={() => setActivityPage((p) => p - 1)}
-                    >
-                      Prev
-                    </button>
-                    <span>
-                      {activityPage} / {activitiesData.total_pages}
-                    </span>
-                    <button
-                      type="button"
-                      disabled={activityPage >= activitiesData.total_pages}
-                      onClick={() => setActivityPage((p) => p + 1)}
-                    >
-                      Next
-                    </button>
-                  </div>
-                ) : null}
+                <LoadMoreButton
+                  hasMore={hasMoreActivities}
+                  loading={loadingMore}
+                  onClick={() => loadActivities(activities.length, true)}
+                />
               </>
             ) : null}
           </section>

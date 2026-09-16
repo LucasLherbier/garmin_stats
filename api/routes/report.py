@@ -109,6 +109,22 @@ def activity_report_detail(activity_id: int):
     }
 
 
+def _gcs_month(day_value) -> str:
+    return str(day_value)[:7]
+
+
+def _load_csv_splits(activity_id: int, day_value):
+    from utils.utils_gcp import bucket, check_gcs_path_exists, read_csv_from_gcs
+
+    if not bucket:
+        return None
+    month = _gcs_month(day_value)
+    csv_path = f"data/raw/{month}/{activity_id}/{activity_id}.csv"
+    if not check_gcs_path_exists(csv_path):
+        return None
+    return read_csv_from_gcs(csv_path)
+
+
 def _build_report_html(activity_id: int):
     detail_df = query_bigquery_live(sql.get_activity_report_query(activity_id))
     if detail_df.empty:
@@ -117,6 +133,20 @@ def _build_report_html(activity_id: int):
     detail_row = detail_df.iloc[0]
     sport = resolve_sport(detail_row)
     laps = parse_laps_field(detail_row.get("laps"))
+
+    csv_df = _load_csv_splits(activity_id, detail_row.get("startTimeLocal") or detail_row.get("Day"))
+    if csv_df is not None and not csv_df.empty:
+        from utils.pipeline.workout_summaries.parse_laps import normalize_laps_from_csv
+        from actions.cycling_splits import power_from_csv
+
+        if not laps:
+            laps, _ = normalize_laps_from_csv(csv_df, sport)
+        avg_np_w = None
+        if sport == "cycling":
+            _, avg_np = power_from_csv(csv_df)
+            avg_np_w = int(round(avg_np)) if avg_np is not None else None
+    else:
+        avg_np_w = None
 
     power_profile, hr_series, track_points, telemetry_df = load_report_assets(
         activity_id, detail_row.get("startTimeLocal"), sport
@@ -130,6 +160,8 @@ def _build_report_html(activity_id: int):
         hr_series=hr_series,
         track_points=track_points,
         telemetry_df=telemetry_df,
+        csv_splits_df=csv_df,
+        avg_np_w=avg_np_w,
     )
     return detail_row, html_doc
 
@@ -148,13 +180,16 @@ def generate_report(body: GenerateReportRequest):
     detail_row, html_doc = _build_report_html(body.activity_id)
 
     date_str = str(detail_row.get("Day") or detail_row.get("startTimeLocal", ""))[:10]
-    share_url, share_expiry_days = publish_report_html(html_doc, body.activity_id, date_str)
+    share_url, share_url_long, share_expiry_days = publish_report_html(
+        html_doc, body.activity_id, date_str
+    )
 
     return {
         "activity_id": body.activity_id,
         "html": html_doc,
-        "share_url": share_url,
-        "share_url_long": None,
+        "share_url": share_url_long or share_url,
+        "share_url_short": share_url if share_url_long else None,
+        "share_url_long": share_url_long,
         "share_expiry_days": share_expiry_days,
     }
 

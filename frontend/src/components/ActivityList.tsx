@@ -1,10 +1,10 @@
 import { useNavigate } from 'react-router-dom';
 import type { ActivitySummary, Sport } from '../types';
 import { formatSpeedKmh } from '../utils/format';
+import { activityPath } from '../utils/paths';
 
 interface ActivityListProps {
   activities: ActivitySummary[];
-  routePrefix: string;
   sport?: Sport;
 }
 
@@ -37,7 +37,7 @@ function formatHr(hr: number): string {
   return String(Math.round(hr));
 }
 
-export function ActivityList({ activities, routePrefix, sport }: ActivityListProps) {
+export function ActivityList({ activities, sport }: ActivityListProps) {
   const navigate = useNavigate();
   const paceLabel = fourthColumnLabel(sport);
 
@@ -69,7 +69,7 @@ export function ActivityList({ activities, routePrefix, sport }: ActivityListPro
             key={a.activityId}
             type="button"
             className="race-activity-row"
-            onClick={() => navigate(`/${routePrefix}/activity/${a.activityId}`)}
+            onClick={() => navigate(activityPath(a.activityId))}
           >
             {columns.map((col) => (
               <div key={col.key} className="race-activity-cell">

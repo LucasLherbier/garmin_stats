@@ -17,7 +17,7 @@ function normalizeApiBase(raw: string | undefined): string {
 
 const API_BASE = normalizeApiBase(import.meta.env.VITE_API_BASE);
 
-function apiUrl(path: string, params?: Record<string, string | number | undefined>): string {
+export function apiUrl(path: string, params?: Record<string, string | number | undefined>): string {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
   const url = `${API_BASE}${normalizedPath}`;
   if (!params) return url;
@@ -85,13 +85,13 @@ export const api = {
       request<{ points: import('../types').ChartPoint[] }>(
         apiUrl(`/sports/${sport}/trends`, { timeRange }),
       ),
-    activities: (sport: string, timeRange: string, page = 1) =>
+    activities: (sport: string, timeRange: string, offset = 0, pageSize = 5) =>
       request<{
         activities: import('../types').ActivitySummary[];
-        total: number;
-        page: number;
-        total_pages: number;
-      }>(apiUrl(`/sports/${sport}/activities`, { timeRange, page })),
+        offset: number;
+        page_size: number;
+        has_more: boolean;
+      }>(apiUrl(`/sports/${sport}/activities`, { timeRange, offset, pageSize })),
     activityDetail: (activityId: number) =>
       request<{
         activity: Record<string, unknown>;
@@ -101,6 +101,8 @@ export const api = {
         splits: Record<string, unknown>[] | null;
         laps: Record<string, unknown>[] | null;
         telemetry: Record<string, unknown>[] | null;
+        avg_power_w: number | null;
+        avg_np_w: number | null;
         power_profile: {
           display_labels: string[];
           values: number[];
@@ -134,8 +136,11 @@ export const api = {
   },
 
   race: {
-    list: () => request<{ races: Array<{ index: number; display: string }> }>(apiUrl('/race/races')),
-    detail: (raceIndex: number, granularity: string) =>
+    list: () =>
+      request<{ races: Array<{ index: number; slug: string; display: string }> }>(
+        apiUrl('/race/races'),
+      ),
+    detail: (raceKey: string | number, granularity: string) =>
       request<{
         empty: boolean;
         training_volume: Array<{
@@ -195,18 +200,18 @@ export const api = {
             points: Array<{ time_period: string; value: number }>;
           }>;
         };
-      }>(apiUrl(`/race/${raceIndex}`, { granularity })),
+      }>(apiUrl(`/race/${raceKey}`, { granularity })),
     activities: (
-      raceIndex: number,
+      raceKey: string | number,
       sport: 'swimming' | 'cycling' | 'running' | 'gym',
-      page = 1,
+      offset = 0,
+      pageSize = 5,
     ) =>
       request<{
         sport: string;
-        total: number;
-        page: number;
+        offset: number;
         page_size: number;
-        total_pages: number;
+        has_more: boolean;
         activities: Array<{
           activityId: number;
           day?: string;
@@ -222,14 +227,7 @@ export const api = {
           calories: number;
           sport: string;
         }>;
-        summary: {
-          distance_km: number;
-          duration: string;
-          sessions: number;
-          average_hr: number;
-          elevation_gain_m: number;
-        };
-      }>(apiUrl(`/race/${raceIndex}/activities`, { sport, page, pageSize: 5 })),
+      }>(apiUrl(`/race/${raceKey}/activities`, { sport, offset, pageSize })),
   },
 
   races: {

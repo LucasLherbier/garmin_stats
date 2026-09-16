@@ -18,6 +18,8 @@ LIST_COLORS = [
     "#c084fc", "#14b8a6", "#fb7185", "#818cf8", "#4ade80",
 ]
 
+ATHLETE_MAX_HR = 195
+
 # Backwards-compatible alias
 SPLIT_COLORS = LIST_COLORS
 
@@ -242,29 +244,29 @@ def svg_bike_np_splits_table(laps: list[dict], *, bar_color: str | None = None) 
 
 
 def _hr_zone_index(hr: float, max_hr: float) -> int:
+    """Map HR to Z1–Z5 using standard % max HR bands (Z1 upper bound 60%, Z5 from 90%)."""
     pct = hr / max_hr if max_hr > 0 else 0
-    thresholds = [0.60, 0.70, 0.80, 0.90, 0.95, 0.99]
-    for i, threshold in enumerate(thresholds):
-        if pct < threshold:
-            return i
-    return 6
+    if pct < 0.60:
+        return 0  # Z1: 50–60% (below 50% counted as very light recovery)
+    if pct < 0.70:
+        return 1  # Z2: 60–70%
+    if pct < 0.80:
+        return 2  # Z3: 70–80%
+    if pct < 0.90:
+        return 3  # Z4: 80–90%
+    return 4  # Z5: 90–100%
 
 
-def hr_zone_seconds_from_laps(laps: list[dict], max_hr: float | None = None) -> tuple[list[float], float]:
+def hr_zone_seconds_from_laps(laps: list[dict]) -> tuple[list[float], float]:
     """Duration (seconds) in each HR zone, estimated from lap avg HR."""
-    zone_seconds = [0.0] * 7
-    hr_samples = [lap.get("avg_hr") for lap in laps if lap.get("avg_hr") is not None]
-    if not hr_samples:
-        return zone_seconds, float(max_hr or 190)
-
-    estimated_max = float(max_hr or max(hr_samples) * 1.05)
+    zone_seconds = [0.0] * 5
     for lap in laps:
         hr = lap.get("avg_hr")
         dur = _lap_duration_s(lap)
         if hr is None or dur <= 0:
             continue
-        zone_seconds[_hr_zone_index(float(hr), estimated_max)] += dur
-    return zone_seconds, estimated_max
+        zone_seconds[_hr_zone_index(float(hr), ATHLETE_MAX_HR)] += dur
+    return zone_seconds, float(ATHLETE_MAX_HR)
 
 
 def svg_hr_zones_from_seconds(
@@ -272,12 +274,12 @@ def svg_hr_zones_from_seconds(
     width: int = 380,
     height: int = 130,
 ) -> str:
-    """Horizontal zone distribution bar chart (Z1–Z7) with visible segments."""
+    """Horizontal zone distribution bar chart (Z1–Z5) with visible segments."""
     total = sum(zone_seconds)
     if total <= 0:
         return ""
 
-    colors = ["#312e81", "#4338ca", "#6366f1", "#818cf8", "#a78bfa", "#c084fc", "#e9d5ff"]
+    colors = ["#312e81", "#4338ca", "#6366f1", "#a78bfa", "#fb7185"]
     margin = dict(l=8, r=8, t=8, b=36)
     bar_h = 56
     x = margin["l"]
@@ -314,17 +316,16 @@ def svg_hr_zones_from_seconds(
     </svg>"""
 
 
-def svg_hr_zones(hr_values: pd.Series, max_hr: float | None = None, width: int = 380, height: int = 130) -> str:
+def svg_hr_zones(hr_values: pd.Series, width: int = 380, height: int = 130) -> str:
     """Horizontal zone distribution from telemetry HR samples."""
     numeric = pd.to_numeric(hr_values, errors="coerce").dropna()
     numeric = numeric[numeric > 0]
     if numeric.empty:
         return ""
 
-    max_hr = float(max_hr or numeric.max() or 190)
-    zone_seconds = [0.0] * 7
+    zone_seconds = [0.0] * 5
     for hr in numeric:
-        zone_seconds[_hr_zone_index(float(hr), max_hr)] += 1.0
+        zone_seconds[_hr_zone_index(float(hr), ATHLETE_MAX_HR)] += 1.0
     return svg_hr_zones_from_seconds(zone_seconds, width=width, height=height)
 
 
@@ -344,7 +345,13 @@ def _nice_y_ticks(y_min: float, y_max: float, count: int = 5) -> list[int]:
     return ticks or [int(y_min), int(y_max)]
 
 
-def svg_power_curve(power_curve: dict[str, float | None], width: int = 380, height: int = 200) -> str:
+def svg_power_curve(
+    power_curve: dict[str, float | None],
+    width: int = 380,
+    height: int = 240,
+    *,
+    np_w: int | None = None,
+) -> str:
     """Line chart of peak power vs duration (log x-axis, Strava-style grid)."""
     labels = [label for label in POWER_CURVE_DURATIONS if power_curve.get(label) is not None]
     if len(labels) < 2:
@@ -359,7 +366,7 @@ def svg_power_curve(power_curve: dict[str, float | None], width: int = 380, heig
     y_min = max(0, min(ys) * 0.88)
     y_max = max(ys) * 1.06
 
-    margin = dict(l=44, r=14, t=12, b=36)
+    margin = dict(l=44, r=14, t=12, b=56)
     inner_w = width - margin["l"] - margin["r"]
     inner_h = height - margin["t"] - margin["b"]
     base_y = margin["t"] + inner_h
@@ -412,18 +419,44 @@ def svg_power_curve(power_curve: dict[str, float | None], width: int = 380, heig
 
     path = "M " + " L ".join(f"{px(s):.1f},{py(w):.1f}" for s, w, _ in points)
     tick_labels = []
-    for sec, _, label in points:
+    value_labels = []
+    label_y = base_y + 14
+    for sec, watts, label in points:
+        x = px(sec)
         tick_labels.append(
-            f'<text x="{px(sec):.1f}" y="{height - 6}" text-anchor="middle" '
-            f'font-size="9" fill="#71717a">{label}</text>'
+            f'<text x="{x:.1f}" y="{label_y}" transform="rotate(-35 {x:.1f} {label_y})" '
+            f'text-anchor="end" font-size="9" fill="#71717a">{label}</text>'
+        )
+        value_labels.append(
+            f'<text x="{px(sec):.1f}" y="{py(watts) - 6:.1f}" text-anchor="middle" '
+            f'font-size="9" fill="#f5f5f7">{int(round(watts))}</text>'
+        )
+
+    np_line = ""
+    legend = (
+        f'<text x="{margin["l"]}" y="{margin["t"] - 1}" font-size="9" fill="#a78bfa">Peak power</text>'
+    )
+    if np_w is not None and np_w > 0:
+        np_y = py(float(np_w))
+        np_line = (
+            f'<line x1="{margin["l"]}" y1="{np_y:.1f}" x2="{width - margin["r"]}" y2="{np_y:.1f}" '
+            f'stroke="#ff6b2c" stroke-width="1.5" stroke-dasharray="5 4"/>'
+            f'<text x="{width - margin["r"]}" y="{np_y - 4:.1f}" text-anchor="end" '
+            f'font-size="9" fill="#ff6b2c">NP {int(np_w)}W</text>'
+        )
+        legend += (
+            f'<text x="{margin["l"] + 72}" y="{margin["t"] - 1}" font-size="9" fill="#ff6b2c">NP</text>'
         )
 
     return f"""
     <svg viewBox="0 0 {width} {height}" width="100%" height="{height}" xmlns="http://www.w3.org/2000/svg">
+      {legend}
       <rect x="{margin['l']}" y="{margin['t']}" width="{inner_w}" height="{inner_h}" fill="#12121a"/>
       {''.join(grid)}
+      {np_line}
       <path d="{path}" fill="none" stroke="#a78bfa" stroke-width="2.5"/>
       {''.join(f'<circle cx="{px(s):.1f}" cy="{py(w):.1f}" r="3.5" fill="#a78bfa"/>' for s, w, _ in points)}
+      {''.join(value_labels)}
       {''.join(tick_labels)}
     </svg>"""
 
@@ -491,12 +524,19 @@ def svg_power_skills(power_curve: dict[str, float | None], width: int = 380, hei
         radius = inner / 2 - max_label_w * 0.55 - label_gap
         radius = max(radius, inner * 0.26)
 
-    # Background concentric rings + radial spokes
+    # Power grid: concentric watt rings + radial spokes
     for frac in (0.25, 0.5, 0.75, 1.0):
         r = radius * frac
         grid_svg.append(
             f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{r:.1f}" fill="none" '
-            f'stroke="rgba(0,0,0,0.10)" stroke-width="1"/>'
+            f'stroke="rgba(255,255,255,0.10)" stroke-width="1"/>'
+        )
+        watt_tick = int(round(v_max * frac))
+        tick_x = cx
+        tick_y = cy - r
+        grid_svg.append(
+            f'<text x="{tick_x:.1f}" y="{tick_y - 3:.1f}" text-anchor="middle" '
+            f'font-size="8" fill="#71717a">{watt_tick}</text>'
         )
     for i in range(n):
         angle = -math.pi / 2 + (2 * math.pi * i / n)
@@ -504,7 +544,7 @@ def svg_power_skills(power_curve: dict[str, float | None], width: int = 380, hei
         y2 = cy + radius * math.sin(angle)
         grid_svg.append(
             f'<line x1="{cx:.1f}" y1="{cy:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" '
-            f'stroke="rgba(0,0,0,0.10)" stroke-width="1"/>'
+            f'stroke="rgba(255,255,255,0.10)" stroke-width="1"/>'
         )
 
     for i, (label, watts, color) in enumerate(entries):
@@ -525,9 +565,8 @@ def svg_power_skills(power_curve: dict[str, float | None], width: int = 380, hei
         est_w = _estimate_label_width(label, watts, font_size)
         lx, ly = _clamp_radar_label(lx, ly, anchor, est_w, width, height, font_size=font_size)
         labels_svg.append(
-            f'<text x="{lx:.1f}" y="{ly:.1f}" text-anchor="{anchor}" font-size="{font_size}" fill="{color}">'
-            f'<tspan font-weight="700">{label}</tspan>'
-            f'<tspan fill="#f5f5f7" font-weight="600"> {int(watts)}W</tspan></text>'
+            f'<text x="{lx:.1f}" y="{ly:.1f}" text-anchor="{anchor}" font-size="{font_size}" '
+            f'fill="{color}" font-weight="700">{label}</text>'
         )
 
     poly = " ".join(polygon_pts)
@@ -539,20 +578,51 @@ def svg_power_skills(power_curve: dict[str, float | None], width: int = 380, hei
     </svg>"""
 
 
-def _prepare_telemetry(times: pd.Series, values: pd.Series, max_points: int = 320) -> tuple[pd.Series, pd.Series]:
-    """Align telemetry on elapsed seconds from workout start; downsample full ride evenly."""
+def _rolling_average(elapsed: np.ndarray, values: np.ndarray, window_sec: float) -> np.ndarray:
+    if len(values) == 0:
+        return values
+    out = np.empty(len(values), dtype=float)
+    start = 0
+    total = 0.0
+    count = 0
+    for i in range(len(values)):
+        total += values[i]
+        count += 1
+        while start < i and elapsed[i] - elapsed[start] > window_sec:
+            total -= values[start]
+            count -= 1
+            start += 1
+        out[i] = total / count if count else values[i]
+    return out
+
+
+def _prepare_telemetry(
+    times: pd.Series,
+    values: pd.Series,
+    max_points: int = 320,
+    *,
+    smooth_window_s: float | None = None,
+) -> tuple[pd.Series, pd.Series]:
+    """Align telemetry on elapsed seconds from workout start; optional rolling average."""
     ts = pd.to_datetime(times, errors="coerce")
     vals = pd.to_numeric(values, errors="coerce")
     if ts.empty or ts.isna().all():
         return pd.Series(dtype=float), pd.Series(dtype=float)
 
     elapsed = (ts - ts.iloc[0]).dt.total_seconds()
-    frame = pd.DataFrame({"elapsed": elapsed, "value": vals}).dropna(subset=["elapsed"])
+    frame = pd.DataFrame({"elapsed": elapsed, "value": vals}).dropna(subset=["elapsed", "value"])
     if frame.empty:
         return pd.Series(dtype=float), pd.Series(dtype=float)
 
+    if smooth_window_s and len(frame) > 1:
+        smoothed = _rolling_average(
+            frame["elapsed"].to_numpy(dtype=float),
+            frame["value"].to_numpy(dtype=float),
+            smooth_window_s,
+        )
+        frame["value"] = smoothed
+
     if len(frame) > max_points:
-        # Evenly sample across the whole activity, not just the opening segment.
         idx = np.linspace(0, len(frame) - 1, max_points, dtype=int)
         frame = frame.iloc[idx].reset_index(drop=True)
 
@@ -582,9 +652,11 @@ def svg_telemetry_line(
     width: int = 380,
     height: int = 140,
     total_duration_s: float | None = None,
+    smooth_window_s: float | None = None,
+    np_w: int | None = None,
 ) -> str:
     """Single-metric telemetry line chart (x-axis = elapsed time from start)."""
-    elapsed, v = _prepare_telemetry(times, values)
+    elapsed, v = _prepare_telemetry(times, values, smooth_window_s=smooth_window_s)
     valid = v.notna()
     elapsed = elapsed[valid].reset_index(drop=True)
     v = v[valid].reset_index(drop=True)
@@ -595,6 +667,9 @@ def svg_telemetry_line(
     max_elapsed = max(data_max, float(total_duration_s or 0)) or data_max or 1.0
     y_min = float(v.min())
     y_max = float(v.max())
+    if np_w is not None and np_w > 0:
+        y_min = min(y_min, float(np_w))
+        y_max = max(y_max, float(np_w))
     pad = max((y_max - y_min) * 0.08, 1)
     y_min -= pad
     y_max += pad
@@ -631,6 +706,16 @@ def svg_telemetry_line(
         f"L {px(float(elapsed.iloc[-1])):.1f},{margin['t'] + inner_h:.1f} Z"
     )
 
+    np_line = ""
+    if np_w is not None and np_w > 0:
+        np_y = py(float(np_w))
+        np_line = (
+            f'<line x1="{margin["l"]}" y1="{np_y:.1f}" x2="{width - margin["r"]}" y2="{np_y:.1f}" '
+            f'stroke="#ff6b2c" stroke-width="1.2" stroke-dasharray="4 3" opacity="0.85"/>'
+            f'<text x="{width - margin["r"]}" y="{np_y - 3:.1f}" text-anchor="end" '
+            f'font-size="8" fill="#ff6b2c">NP {int(np_w)}W</text>'
+        )
+
     x_labels = []
     for frac, lbl in _elapsed_tick_labels(max_elapsed):
         x = margin["l"] + inner_w * frac
@@ -639,11 +724,19 @@ def svg_telemetry_line(
             f'font-size="9" fill="#71717a">{lbl}</text>'
         )
 
+    subtitle = f"{smooth_window_s:.0f}s rolling avg" if smooth_window_s else ""
+    title_html = (
+        f'{label} <span style="font-weight:400;color:#71717a">· {subtitle}</span>'
+        if subtitle
+        else label
+    )
+
     return f"""
     <div class="telemetry-chart">
-      <div class="telemetry-chart-title">{label}</div>
+      <div class="telemetry-chart-title">{title_html}</div>
       <svg viewBox="0 0 {width} {height}" width="100%" height="{height}" xmlns="http://www.w3.org/2000/svg">
         {''.join(grid)}
+        {np_line}
         <path d="{area_pts}" fill="{color}" opacity="0.12"/>
         <path d="M {path_pts}" fill="none" stroke="{color}" stroke-width="2"/>
         {''.join(x_labels)}
@@ -657,6 +750,7 @@ def svg_telemetry_stack(
     *,
     width: int = 380,
     total_duration_s: float | None = None,
+    avg_np_w: int | None = None,
 ) -> str:
     """Stacked telemetry charts: HR, Altitude, Power (bike) or Pace (run)."""
     if df is None or df.empty or "Time" not in df.columns:
@@ -665,10 +759,19 @@ def svg_telemetry_stack(
     sport = sport.lower()
     times = df["Time"]
     charts: list[str] = []
+    smooth_s = 30.0
     line_kw = dict(width=width, total_duration_s=total_duration_s)
 
     if "HeartRate" in df.columns:
-        chart = svg_telemetry_line(times, df["HeartRate"], label="Heart Rate", unit="bpm", color="#a78bfa", **line_kw)
+        chart = svg_telemetry_line(
+            times,
+            df["HeartRate"],
+            label="Heart Rate",
+            unit="bpm",
+            color="#a78bfa",
+            smooth_window_s=smooth_s,
+            **line_kw,
+        )
         if chart:
             charts.append(chart)
 
@@ -678,7 +781,16 @@ def svg_telemetry_stack(
             charts.append(chart)
 
     if sport == "cycling" and "Watts" in df.columns:
-        chart = svg_telemetry_line(times, df["Watts"], label="Power", unit="W", color="#ff6b2c", **line_kw)
+        chart = svg_telemetry_line(
+            times,
+            df["Watts"],
+            label="Power",
+            unit="W",
+            color="#ff6b2c",
+            smooth_window_s=smooth_s,
+            np_w=avg_np_w,
+            **line_kw,
+        )
         if chart:
             charts.append(chart)
     elif sport == "running" and "Speed" in df.columns:

@@ -23,7 +23,9 @@ from actions.report_charts import (
     svg_swim_splits_table,
     svg_telemetry_stack,
 )
-from actions.report_map import LEAFLET_HEAD, html_route_map
+from actions.cycling_splits import power_from_csv
+from actions.report_map import svg_route_map
+from utils.pipeline.workout_summaries.parse_laps import normalize_laps_from_csv
 from utils.pipeline.workout_summaries.parse_laps import format_duration, format_pace
 
 
@@ -195,6 +197,10 @@ body {
 .split-bar { width: auto; }
 .split-bar span { display: block; height: 14px; border-radius: 2px; max-width: 100%; }
 .split-elev, .split-hr { color: #a1a1aa; text-align: right; width: 32px; white-space: nowrap; }
+.detail-splits-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.detail-splits-table { min-width: 640px; font-size: 11px; }
+.detail-splits-table th, .detail-splits-table td { white-space: nowrap; padding: 4px 6px; }
+.route-map { display: block; width: 100%; height: auto; }
 .list-block {
   margin: 0 16px 10px;
   padding: 14px 16px 4px;
@@ -317,11 +323,89 @@ def _avg_power_from_telemetry(telemetry_df: pd.DataFrame | None) -> int | None:
     return int(round(float(watts.mean())))
 
 
+def _avg_np_from_laps(laps: list[dict], sport: str) -> int | None:
+    if sport != "cycling" or not laps:
+        return None
+    agg = aggregate_selected_laps(laps, list(range(len(laps))), sport)
+    avg_np = agg.get("avg_np_w")
+    return int(round(avg_np)) if avg_np is not None else None
+
+
+def _avg_np_w_from_csv(csv_df: pd.DataFrame | None, sport: str) -> int | None:
+    if sport != "cycling" or csv_df is None or csv_df.empty:
+        return None
+    _, avg_np = power_from_csv(csv_df)
+    return int(round(avg_np)) if avg_np is not None else None
+
+
+_SPLIT_TABLE_COLUMNS = [
+    "Split",
+    "Distance",
+    "Time",
+    "Moving Time",
+    "Avg Pace",
+    "Avg Moving Pace",
+    "Avg HR",
+    "Max HR",
+    "Avg Power",
+    "Normalized Power",
+    "Avg Speed",
+    "Avg Bike Cadence",
+    "Elevation Gain",
+    "Elev Loss",
+    "Calories",
+]
+
+
+def _format_split_cell(column: str, value) -> str:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return "—"
+    if column == "Moving Time" and isinstance(value, (int, float)):
+        return str(int(round(float(value))))
+    if isinstance(value, float):
+        return str(int(value)) if float(value).is_integer() else f"{value:.1f}"
+    text = str(value).strip()
+    if column == "Moving Time":
+        return text.replace(".0", "")
+    return text or "—"
+
+
+def html_detail_splits_table(csv_df: pd.DataFrame | None) -> str:
+    """Full Garmin lap CSV table (matches the app splits section)."""
+    if csv_df is None or csv_df.empty:
+        return ""
+
+    df = csv_df.copy()
+    df.columns = [str(col).strip() for col in df.columns]
+    df["Split"] = df["Split"].astype(str).str.strip()
+    df = df[~df["Split"].str.lower().isin({"summary", "total"})]
+    if df.empty:
+        return ""
+
+    columns = [col for col in _SPLIT_TABLE_COLUMNS if col in df.columns]
+    columns.extend(sorted(col for col in df.columns if col not in columns))
+    header = "".join(f"<th>{_esc(col)}</th>" for col in columns)
+    rows = []
+    for _, row in df.iterrows():
+        cells = "".join(
+            f"<td>{_esc(_format_split_cell(col, row.get(col)))}</td>" for col in columns
+        )
+        rows.append(f"<tr>{cells}</tr>")
+
+    return f"""
+    <div class="detail-splits-wrap">
+      <table class="splits-table detail-splits-table">
+        <thead><tr>{header}</tr></thead>
+        <tbody>{"".join(rows)}</tbody>
+      </table>
+    </div>"""
+
+
 def _activity_summary_metrics(
     activity_row,
     sport: str,
     *,
-    avg_power_w: int | None = None,
+    avg_np_w: int | None = None,
 ) -> list[tuple[str, str]]:
     sport = sport.lower()
     duration = activity_row.get("duration")
@@ -351,7 +435,7 @@ def _activity_summary_metrics(
             ("Distance", f"{dist_km:.1f} km" if dist_km else "—"),
             ("Elevation Gain", f"{int(float(elev))} m" if elev is not None and not pd.isna(elev) else "—"),
             ("Moving Time", format_duration(duration) if duration else "—"),
-            ("Avg Power", f"{avg_power_w} W" if avg_power_w is not None else "—"),
+            ("NP", f"{avg_np_w} W" if avg_np_w is not None else "—"),
             ("Avg Speed", f"{float(speed) * 3.6:.1f} km/h" if speed is not None and not pd.isna(speed) else "—"),
             ("Calories", f"{int(cal):,} Cal" if cal is not None and not pd.isna(cal) else "—"),
         ]
@@ -565,12 +649,12 @@ def _section_open(title: str, sport: str, *, logo: str = "") -> str:
     return f'<div class="section {tone}"><div class="section-head">{logo_html}{_esc(title)}</div>'
 
 
-def _hr_zones_section(laps: list[dict], hr_series, max_hr, sport: str) -> str:
+def _hr_zones_section(laps: list[dict], hr_series, sport: str) -> str:
     zones_svg = ""
     if hr_series is not None and not hr_series.empty:
-        zones_svg = svg_hr_zones(hr_series, max_hr=max_hr)
+        zones_svg = svg_hr_zones(hr_series)
     if not zones_svg and laps:
-        zone_seconds, _ = hr_zone_seconds_from_laps(laps, max_hr=max_hr)
+        zone_seconds, _ = hr_zone_seconds_from_laps(laps)
         zones_svg = svg_hr_zones_from_seconds(zone_seconds)
     if not zones_svg:
         return ""
@@ -585,10 +669,16 @@ def _telemetry_section(
     sport: str,
     *,
     total_duration_s: float | None = None,
+    avg_np_w: int | None = None,
 ) -> str:
     if telemetry_df is None or telemetry_df.empty:
         return ""
-    charts = svg_telemetry_stack(telemetry_df, sport, total_duration_s=total_duration_s)
+    charts = svg_telemetry_stack(
+        telemetry_df,
+        sport,
+        total_duration_s=total_duration_s,
+        avg_np_w=avg_np_w,
+    )
     if not charts:
         return ""
     return (
@@ -597,9 +687,9 @@ def _telemetry_section(
     )
 
 
-def _run_body(laps: list[dict], hr_series, max_hr, sport: str) -> str:
+def _run_body(laps: list[dict], hr_series, sport: str) -> str:
     parts = []
-    zones = _hr_zones_section(laps, hr_series, max_hr, sport)
+    zones = _hr_zones_section(laps, hr_series, sport)
     if zones:
         parts.append(zones)
 
@@ -612,25 +702,32 @@ def _run_body(laps: list[dict], hr_series, max_hr, sport: str) -> str:
     return "".join(parts)
 
 
-def _bike_body(laps: list[dict], power_profile: dict | None, hr_series, max_hr, sport: str) -> str:
+def _bike_body(
+    laps: list[dict],
+    power_profile: dict | None,
+    hr_series,
+    sport: str,
+    *,
+    avg_np_w: int | None = None,
+) -> str:
     parts = []
-    zones = _hr_zones_section(laps, hr_series, max_hr, sport)
+    zones = _hr_zones_section(laps, hr_series, sport)
     if zones:
         parts.append(zones)
 
     if power_profile:
         curve = power_profile.get("power_curve") or {}
-        curve_svg = svg_power_curve(curve)
-        if curve_svg:
-            parts.append(
-                f'{_section_open("Power Curve", sport, logo="&gt;")}'
-                f'<div class="chart-wrap">{curve_svg}</div></div>'
-            )
         skills_svg = svg_power_skills(curve)
         if skills_svg:
             parts.append(
-                f'{_section_open("Power Skills", sport)}'
+                f'{_section_open("Power profile", sport)}'
                 f'<div class="chart-wrap">{skills_svg}</div></div>'
+            )
+        curve_svg = svg_power_curve(curve, np_w=avg_np_w)
+        if curve_svg:
+            parts.append(
+                f'{_section_open("Power curve", sport, logo="&gt;")}'
+                f'<div class="chart-wrap">{curve_svg}</div></div>'
             )
     return "".join(parts)
 
@@ -689,10 +786,9 @@ def _intro_html(
     map_html = ""
     uses_leaflet = False
     if track_points and len(track_points) >= 2:
-        leaflet_map = html_route_map(track_points)
-        if leaflet_map:
-            map_html = f'<div class="map-wrap">{leaflet_map}</div>'
-            uses_leaflet = True
+        static_map = svg_route_map(track_points)
+        if static_map:
+            map_html = f'<div class="map-wrap">{static_map}</div>'
 
     intro = f"""
     <div class="intro-top"><h1>{_esc(title)}</h1></div>
@@ -714,6 +810,8 @@ def build_activity_report_html(
     hr_series: pd.Series | None = None,
     track_points: list | None = None,
     telemetry_df: pd.DataFrame | None = None,
+    csv_splits_df: pd.DataFrame | None = None,
+    avg_np_w: int | None = None,
 ) -> str:
     sport = resolve_sport(activity_row)
     sport_label = {"running": "Run", "cycling": "Ride", "swimming": "Swim"}.get(sport, sport.title())
@@ -722,24 +820,34 @@ def build_activity_report_html(
     effect_label = _effect_label(activity_row)
     structure_summary = _structure_summary(activity_row)
 
+    resolved_np = avg_np_w or _avg_np_from_laps(laps, sport) or _avg_np_w_from_csv(csv_splits_df, sport)
     summary_metrics = _activity_summary_metrics(
         activity_row,
         sport,
-        avg_power_w=_avg_power_from_telemetry(telemetry_df),
+        avg_np_w=resolved_np,
     )
-    max_hr = activity_row.get("maxHR")
     duration = activity_row.get("duration")
     total_duration_s = float(duration) if duration is not None and not pd.isna(duration) else None
 
     if sport == "running":
-        sport_body = _run_body(laps, hr_series, max_hr, sport)
+        sport_body = _run_body(laps, hr_series, sport)
     elif sport == "cycling":
-        sport_body = _bike_body(laps, power_profile, hr_series, max_hr, sport)
+        sport_body = _bike_body(laps, power_profile, hr_series, sport, avg_np_w=resolved_np)
     else:
         sport_body = ""
 
-    telemetry_html = _telemetry_section(telemetry_df, sport, total_duration_s=total_duration_s)
+    telemetry_html = _telemetry_section(
+        telemetry_df,
+        sport,
+        total_duration_s=total_duration_s,
+        avg_np_w=resolved_np,
+    )
     splits_html = _splits_section(laps, sport)
+    detail_splits_html = html_detail_splits_table(csv_splits_df)
+    if detail_splits_html:
+        detail_splits_html = (
+            f'{_section_open("Split details", sport)}{detail_splits_html}</div>'
+        )
 
     # TODO: re-enable split list comparison blocks when list aggregates are wired up again.
     lists_html = _list_blocks_html(list_aggregates or [], laps, sport)
@@ -753,15 +861,12 @@ def build_activity_report_html(
         effect_label=effect_label,
         structure_summary=structure_summary,
     )
-    leaflet_head = LEAFLET_HEAD if uses_leaflet else ""
-
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <title>{_esc(title)}</title>
-  {leaflet_head}
   <style>{REPORT_CSS}</style>
 </head>
 <body>
@@ -772,6 +877,7 @@ def build_activity_report_html(
     {lists_html}
     {telemetry_html}
     {splits_html}
+    {detail_splits_html}
     <div class="footer">Garmin Analytics</div>
   </div>
 </body>

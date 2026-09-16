@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import pandas as pd
 
 from actions import utils as ut
+from api.serializers import safe_float, safe_str
 from utils.pipeline.preprocess_activities import TRAINING_RACE_PERIODS
 
 SPORT_COLORS = {
@@ -86,12 +88,36 @@ def build_training_volume(rm: pd.Series) -> list[dict[str, Any]]:
             "title": "Weekly",
             **_build_volume_row(
                 rm,
-                duration_key="average_duration_per_week",
-                sessions_key="average_week_sessions",
-                elevation_key="average_week_elevation",
-                swim_key="average_week_distance_swim",
-                bike_key="average_week_distance_bike",
-                run_key="average_week_distance_run",
+                duration_key=(
+                    "average_prep_duration_per_week"
+                    if "average_prep_duration_per_week" in rm.index
+                    else "average_duration_per_week"
+                ),
+                sessions_key=(
+                    "average_prep_week_sessions"
+                    if "average_prep_week_sessions" in rm.index
+                    else "average_week_sessions"
+                ),
+                elevation_key=(
+                    "average_prep_week_elevation"
+                    if "average_prep_week_elevation" in rm.index
+                    else "average_week_elevation"
+                ),
+                swim_key=(
+                    "average_prep_week_distance_swim"
+                    if "average_prep_week_distance_swim" in rm.index
+                    else "average_week_distance_swim"
+                ),
+                bike_key=(
+                    "average_prep_week_distance_bike"
+                    if "average_prep_week_distance_bike" in rm.index
+                    else "average_week_distance_bike"
+                ),
+                run_key=(
+                    "average_prep_week_distance_run"
+                    if "average_prep_week_distance_run" in rm.index
+                    else "average_week_distance_run"
+                ),
                 distance_fmt="{:.1f} km",
                 sessions_fmt="{:.1f}",
                 elevation_fmt="{:.0f} m",
@@ -116,9 +142,21 @@ def build_training_volume(rm: pd.Series) -> list[dict[str, Any]]:
     ]
 
 
+def _race_slug(display: str, used: set[str]) -> str:
+    base = re.sub(r"[^a-z0-9]+", "-", display.lower()).strip("-") or "race"
+    slug = base
+    suffix = 2
+    while slug in used:
+        slug = f"{base}-{suffix}"
+        suffix += 1
+    used.add(slug)
+    return slug
+
+
 def race_options() -> list[dict[str, Any]]:
     races = TRAINING_RACE_PERIODS[::-1]
     options = []
+    used_slugs: set[str] = set()
     for idx, race in enumerate(races):
         parts = race["race"].rsplit(" ", 1)
         name = parts[0]
@@ -134,6 +172,7 @@ def race_options() -> list[dict[str, Any]]:
         options.append(
             {
                 "index": idx,
+                "slug": _race_slug(display, used_slugs),
                 "display": display,
                 "start": race["start"],
                 "end": race["end"],
@@ -142,6 +181,19 @@ def race_options() -> list[dict[str, Any]]:
             }
         )
     return options
+
+
+def resolve_race(race_key: str) -> tuple[int, dict[str, Any]]:
+    races = TRAINING_RACE_PERIODS[::-1]
+    options = race_options()
+    if race_key.isdigit():
+        idx = int(race_key)
+        if 0 <= idx < len(races):
+            return idx, races[idx]
+    for option in options:
+        if option["slug"] == race_key:
+            return option["index"], races[option["index"]]
+    raise ValueError(f"Race not found: {race_key}")
 
 
 def analysis_end_date(race: dict[str, Any]) -> str:
@@ -173,8 +225,8 @@ def build_race_summary_payload(
             for _, row in df.iterrows():
                 points.append(
                     {
-                        "time_period": str(row["time_period"])[:10],
-                        "total_distance": float(row["total_distance"] or 0),
+                        "time_period": safe_str(row["time_period"]) or "",
+                        "total_distance": safe_float(row["total_distance"]),
                     }
                 )
         distance_charts.append(
@@ -210,10 +262,10 @@ def volume_chart_payload(activity_duration_df: pd.DataFrame, granularity: str) -
     for _, row in df.iterrows():
         rows.append(
             {
-                "time_period": row["TimePeriod"],
-                "activityTypeGrouped": row["activityTypeGrouped"],
-                "duration": float(row["Duration"] or 0),
-                "formatted_duration": row["FormattedDuration"],
+                "time_period": safe_str(row["TimePeriod"]) or "",
+                "activityTypeGrouped": safe_str(row["activityTypeGrouped"]) or "other",
+                "duration": safe_float(row["Duration"]),
+                "formatted_duration": safe_str(row["FormattedDuration"]) or "",
             }
         )
 
@@ -226,9 +278,9 @@ def volume_chart_payload(activity_duration_df: pd.DataFrame, granularity: str) -
     totals_df["formatted_total"] = totals_df["total_duration"].apply(ut.format_duration_no_days)
     totals = [
         {
-            "time_period": str(r["TimePeriod"])[:10],
-            "total_duration": float(r["total_duration"]),
-            "formatted_total": r["formatted_total"],
+            "time_period": safe_str(r["TimePeriod"]) or "",
+            "total_duration": safe_float(r["total_duration"]),
+            "formatted_total": safe_str(r["formatted_total"]) or "",
         }
         for _, r in totals_df.iterrows()
     ]

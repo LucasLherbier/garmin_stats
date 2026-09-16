@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
+import { activityPath } from '../utils/paths';
 import { MetricCard } from '../components/MetricCard';
 import { PageHeader } from '../components/PageHeader';
 import { SegmentedControl } from '../components/SegmentedControl';
@@ -85,7 +86,7 @@ export function StatsPage() {
                 key={`${row.activityId}-${row.label}`}
                 type="button"
                 className="activity-row"
-                onClick={() => navigate(`/stats/activity/${row.activityId}`)}
+                onClick={() => navigate(activityPath(row.activityId))}
               >
                 <div className="activity-row-main">
                   <div className="name">{row.label}</div>

@@ -10,40 +10,31 @@ import {
   YAxis,
 } from 'recharts';
 import { CHART, tooltipStyle } from '../chartTheme';
+import { formatDurationChart } from '../utils/format';
+import {
+  metricHasData,
+  prepareTelemetryChartData,
+  TELEMETRY_METRIC_LABELS,
+  TELEMETRY_METRICS,
+  type TelemetryMetric,
+} from '../utils/telemetry';
 
 interface TelemetryChartProps {
   rows: Record<string, unknown>[];
   sport?: string;
 }
 
-const METRIC_LABELS: Record<string, string> = {
-  HeartRate: 'Heart rate',
-  Cadence: 'Cadence',
-  Speed: 'Speed (km/h)',
-  Watts: 'Power',
-  Altitude: 'Altitude',
-};
+type SecondMetric = TelemetryMetric | 'none';
 
-const ALL_METRICS = ['HeartRate', 'Cadence', 'Speed', 'Watts', 'Altitude'] as const;
-type Metric = (typeof ALL_METRICS)[number];
-type SecondMetric = Metric | 'none';
-
-function metricHasData(rows: Record<string, unknown>[], metric: Metric): boolean {
-  return rows.some((row) => {
-    const value = Number(row[metric]);
-    return Number.isFinite(value) && value !== 0;
-  });
-}
-
-function pickMetrics(rows: Record<string, unknown>[]): Metric[] {
-  const available = ALL_METRICS.filter((metric) => metricHasData(rows, metric));
+function pickMetrics(rows: Record<string, unknown>[]): TelemetryMetric[] {
+  const available = TELEMETRY_METRICS.filter((metric) => metricHasData(rows, metric));
   if (available.length) return available;
 
-  const fallbacks: Metric[] = ['HeartRate', 'Altitude'];
+  const fallbacks: TelemetryMetric[] = ['HeartRate', 'Altitude'];
   return fallbacks.filter((metric) => metric in (rows[0] ?? {}));
 }
 
-function defaultPair(metrics: Metric[], sport?: string): [Metric, SecondMetric] {
+function defaultPair(metrics: TelemetryMetric[], sport?: string): [TelemetryMetric, SecondMetric] {
   const y1 =
     sport === 'cycling' && metrics.includes('Watts')
       ? 'Watts'
@@ -67,15 +58,9 @@ function defaultPair(metrics: Metric[], sport?: string): [Metric, SecondMetric] 
   return [y1, y2];
 }
 
-function metricValue(row: Record<string, unknown>, metric: Metric): number {
-  const raw = Number(row[metric] ?? 0);
-  if (!Number.isFinite(raw)) return 0;
-  return metric === 'Speed' ? raw * 3.6 : raw;
-}
-
 export function TelemetryChart({ rows, sport }: TelemetryChartProps) {
   const metrics = useMemo(() => pickMetrics(rows), [rows]);
-  const [y1, setY1] = useState<Metric | null>(null);
+  const [y1, setY1] = useState<TelemetryMetric | null>(null);
   const [y2, setY2] = useState<SecondMetric | null>(null);
   const [defaultY1, defaultY2] = useMemo(() => defaultPair(metrics, sport), [metrics, sport]);
 
@@ -87,20 +72,23 @@ export function TelemetryChart({ rows, sport }: TelemetryChartProps) {
   const secondMetric = activeY2 === 'none' ? null : activeY2;
 
   const data = useMemo(
-    () =>
-      rows.map((row) => ({
-        time: String(row.Time ?? '').slice(11, 19),
-        [activeY1]: metricValue(row, activeY1),
-        ...(secondMetric ? { [secondMetric]: metricValue(row, secondMetric) } : {}),
-      })),
+    () => prepareTelemetryChartData(rows, activeY1, secondMetric, 30),
     [rows, activeY1, secondMetric],
   );
+
+  const maxElapsed = data.length ? Number(data[data.length - 1].maxElapsed ?? data[data.length - 1].elapsed) : 0;
+  const xTicks = useMemo(() => {
+    if (maxElapsed <= 0) return [0];
+    const count = 5;
+    return Array.from({ length: count }, (_, index) => (maxElapsed * index) / (count - 1));
+  }, [maxElapsed]);
 
   if (!rows.length || !metrics.length) return null;
 
   return (
     <div className="chart-card">
       <h3 className="section-title">Telemetry</h3>
+      <p className="section-caption">30 s rolling average · full activity duration on x-axis</p>
       {!metrics.includes('Cadence') && metrics.includes('Speed') && sport === 'running' ? (
         <p className="section-caption">Cadence not in TCX — showing speed instead.</p>
       ) : null}
@@ -108,20 +96,20 @@ export function TelemetryChart({ rows, sport }: TelemetryChartProps) {
         <select
           className="form-field"
           value={activeY1}
-          onChange={(e) => setY1(e.target.value as Metric)}
+          onChange={(e) => setY1(e.target.value as TelemetryMetric)}
         >
           {metrics.map((m) => (
-            <option key={m} value={m}>{METRIC_LABELS[m] ?? m}</option>
+            <option key={m} value={m}>{TELEMETRY_METRIC_LABELS[m] ?? m}</option>
           ))}
         </select>
         <select
           className="form-field"
           value={activeY2}
-          onChange={(e) => setY2(e.target.value === 'none' ? 'none' : (e.target.value as Metric))}
+          onChange={(e) => setY2(e.target.value === 'none' ? 'none' : (e.target.value as TelemetryMetric))}
         >
           <option value="none">—</option>
           {metrics.map((m) => (
-            <option key={m} value={m}>{METRIC_LABELS[m] ?? m}</option>
+            <option key={m} value={m}>{TELEMETRY_METRIC_LABELS[m] ?? m}</option>
           ))}
         </select>
       </div>
@@ -129,9 +117,12 @@ export function TelemetryChart({ rows, sport }: TelemetryChartProps) {
         <LineChart data={data} margin={{ top: 8, right: 8, left: 2, bottom: 0 }}>
           <CartesianGrid stroke={CHART.grid} vertical={false} />
           <XAxis
-            dataKey="time"
+            dataKey="elapsed"
+            type="number"
+            domain={[0, maxElapsed || 'auto']}
+            ticks={xTicks}
+            tickFormatter={(value) => formatDurationChart(Number(value))}
             tick={{ fill: CHART.tick, fontSize: 9 }}
-            interval="preserveStartEnd"
             tickLine={false}
             axisLine={false}
           />
@@ -152,15 +143,18 @@ export function TelemetryChart({ rows, sport }: TelemetryChartProps) {
               axisLine={false}
             />
           ) : null}
-          <Tooltip contentStyle={tooltipStyle} />
+          <Tooltip
+            contentStyle={tooltipStyle}
+            labelFormatter={(value) => formatDurationChart(Number(value))}
+          />
           <Legend wrapperStyle={{ fontSize: 10, color: CHART.tick }} />
-          <Line yAxisId="left" type="monotone" dataKey={activeY1} name={METRIC_LABELS[activeY1] ?? activeY1} stroke={CHART.accent} dot={false} strokeWidth={2} />
+          <Line yAxisId="left" type="monotone" dataKey={activeY1} name={TELEMETRY_METRIC_LABELS[activeY1] ?? activeY1} stroke={CHART.accent} dot={false} strokeWidth={2} />
           {secondMetric ? (
             <Line
               yAxisId="right"
               type="monotone"
               dataKey={secondMetric}
-              name={METRIC_LABELS[secondMetric] ?? secondMetric}
+              name={TELEMETRY_METRIC_LABELS[secondMetric] ?? secondMetric}
               stroke={CHART.chart}
               dot={false}
               strokeWidth={2}

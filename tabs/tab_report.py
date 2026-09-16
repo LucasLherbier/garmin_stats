@@ -205,9 +205,10 @@ def _publish_report_share(html: str, activity_id: int, date_str: str) -> None:
     if not bucket:
         st.session_state[share_state_key] = {"error": "GCS bucket not configured."}
         return
-    share_url = publish_report_html(html, activity_id, date_str)
-    if share_url:
-        st.session_state[share_state_key] = {"url": share_url}
+    share_url, share_url_long, _ = publish_report_html(html, activity_id, date_str)
+    best_url = share_url_long or share_url
+    if best_url:
+        st.session_state[share_state_key] = {"url": best_url}
     else:
         st.session_state[share_state_key] = {
             "error": "Could not publish report. Check GCS credentials."

@@ -1,7 +1,6 @@
 import {
   PolarAngleAxis,
   PolarGrid,
-  PolarRadiusAxis,
   Radar,
   RadarChart,
   ResponsiveContainer,
@@ -29,14 +28,16 @@ export function PowerProfileChart({ displayLabels, values }: PowerProfileChartPr
       <ResponsiveContainer width="100%" height={260}>
         <RadarChart data={data} cx="50%" cy="50%" outerRadius="72%">
           <PolarGrid stroke="rgba(255,255,255,0.08)" />
-          <PolarAngleAxis dataKey="label" tick={{ fill: CHART.tick, fontSize: 10 }} />
-          <PolarRadiusAxis tick={{ fill: CHART.tick, fontSize: 9 }} axisLine={false} />
+          <PolarAngleAxis
+            dataKey="label"
+            tick={{ fill: CHART.tick, fontSize: 10 }}
+          />
           <Radar
-            name="Peak W"
             dataKey="watts"
             stroke={CHART.accent}
             fill={CHART.accentFill}
             strokeWidth={2}
+            legendType="none"
           />
         </RadarChart>
       </ResponsiveContainer>

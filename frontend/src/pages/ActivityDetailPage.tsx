@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { PowerCurveChart } from '../components/PowerCurveChart';
@@ -8,15 +8,6 @@ import { SplitsTable } from '../components/SplitsTable';
 import { RunSplitsTable, WorkoutPaceChart, type WorkoutLap } from '../components/WorkoutSplits';
 import { TelemetryChart } from '../components/TelemetryChart';
 import { formatActivityWhen } from '../utils/format';
-
-function avgPowerFromTelemetry(rows: Record<string, unknown>[] | null | undefined): number | null {
-  if (!rows?.length) return null;
-  const watts = rows
-    .map((row) => Number(row.Watts))
-    .filter((value) => Number.isFinite(value) && value > 0);
-  if (!watts.length) return null;
-  return Math.round(watts.reduce((sum, value) => sum + value, 0) / watts.length);
-}
 
 function DetailMetric({ label, value }: { label: string; value: string }) {
   return (
@@ -28,7 +19,7 @@ function DetailMetric({ label, value }: { label: string; value: string }) {
 }
 
 export function ActivityDetailPage() {
-  const { sport, activityId } = useParams<{ sport?: string; activityId: string }>();
+  const { activityId } = useParams<{ activityId: string }>();
   const location = useLocation();
   const fromStats = location.pathname.startsWith('/stats/');
   const [loading, setLoading] = useState(true);
@@ -38,6 +29,7 @@ export function ActivityDetailPage() {
   const [shareExpiryDays, setShareExpiryDays] = useState<number | null>(null);
   const [shareMessage, setShareMessage] = useState<string | null>(null);
   const [shareError, setShareError] = useState<string | null>(null);
+  const [shareHtml, setShareHtml] = useState<string | null>(null);
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
   const [detail, setDetail] = useState<Awaited<ReturnType<typeof api.sports.activityDetail>> | null>(
     null,
@@ -65,16 +57,24 @@ export function ActivityDetailPage() {
   }, [activityId]);
 
   const activity = detail?.activity;
-  const backTo = fromStats ? '/stats' : `/${sport ?? 'run'}`;
+  const sportHome =
+    detail?.sport === 'swimming' ? '/swim' : detail?.sport === 'cycling' ? '/bike' : '/run';
+  const backTo = fromStats ? '/stats' : sportHome;
   const laps = (detail?.laps ?? []) as WorkoutLap[];
   const hasWorkoutLaps = laps.length > 0 && detail?.sport === 'running';
   const when = formatActivityWhen(activity?.startTimeLocal ?? activity?.Day, activity?.Day);
   const locationName = String(activity?.locationName ?? '').trim();
   const isCycling = detail?.sport === 'cycling';
-  const avgPower = useMemo(
-    () => avgPowerFromTelemetry(detail?.telemetry),
-    [detail?.telemetry],
-  );
+
+  function downloadShareHtml(html: string, id: string) {
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `report_${id}.html`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
 
   async function handleShareLink() {
     if (!activityId) return;
@@ -83,24 +83,26 @@ export function ActivityDetailPage() {
     setShareMessage(null);
     setShareUrl(null);
     setShareExpiryDays(null);
+    setShareHtml(null);
     setCopyState('idle');
     try {
       const result = await api.report.publish(Number(activityId));
+      if (result.html) {
+        setShareHtml(result.html);
+      }
       if (result.share_url) {
         setShareUrl(result.share_url);
         setShareExpiryDays(result.share_expiry_days);
-        setShareMessage(`Share link ready · valid ${result.share_expiry_days} days`);
+        setShareMessage(
+          result.share_url_long
+            ? `Direct HTML link ready · valid ${result.share_expiry_days} days`
+            : `Share link ready · valid ${result.share_expiry_days} days`,
+        );
         return;
       }
 
       if (result.html) {
-        const blob = new Blob([result.html], { type: 'text/html;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        const anchor = document.createElement('a');
-        anchor.href = url;
-        anchor.download = `report_${activityId}.html`;
-        anchor.click();
-        URL.revokeObjectURL(url);
+        downloadShareHtml(result.html, activityId);
         setShareMessage('HTML downloaded (GCS not configured for share link)');
         return;
       }
@@ -174,14 +176,25 @@ export function ActivityDetailPage() {
               {copyState === 'failed' ? (
                 <p className="share-link-copy-failed">Couldn&apos;t copy — select the link above.</p>
               ) : null}
-              <a
-                href={shareUrl}
-                className="share-link-open"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Open report
-              </a>
+              <div className="share-link-actions">
+                <a
+                  href={shareUrl}
+                  className="share-link-open"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Open report
+                </a>
+                {shareHtml ? (
+                  <button
+                    type="button"
+                    className="btn-share-copy"
+                    onClick={() => downloadShareHtml(shareHtml, activityId ?? 'activity')}
+                  >
+                    Download HTML
+                  </button>
+                ) : null}
+              </div>
             </div>
           ) : shareMessage ? (
             <p className="share-link-note">{shareMessage}</p>
@@ -214,8 +227,8 @@ export function ActivityDetailPage() {
                 value={String(activity.durationFormatted ?? activity.duration ?? '—')}
               />
               <DetailMetric
-                label="Avg Power"
-                value={avgPower != null ? `${avgPower} W` : '—'}
+                label="NP"
+                value={detail.avg_np_w != null ? `${detail.avg_np_w} W` : '—'}
               />
               <DetailMetric
                 label="Avg Speed"
@@ -278,6 +291,7 @@ export function ActivityDetailPage() {
                 displayLabels={detail.power_profile.display_labels}
                 values={detail.power_profile.values}
                 seconds={detail.power_profile.seconds}
+                npW={detail.avg_np_w}
               />
             </>
           ) : null}

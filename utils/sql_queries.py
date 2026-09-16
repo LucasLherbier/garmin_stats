@@ -204,7 +204,56 @@ def get_weekly_metrics_with_delta_query(sport_type):
         ) second ON 1=1;
     """
 
-def get_recent_activities_query(sport_type, timerange):
+def _activity_list_columns() -> str:
+    return """
+            act.Day,
+            act.activityTypeGrouped,
+            act.activityId,
+            ROUND(act.distance, 2) AS distance,
+            act.duration,
+            act.calories,
+            act.averageHR,
+            act.maxHR,
+            act.minHR,
+            act.totalNumberOfStrokes,
+            act.averageStrokeDistance,
+            act.averageSwimCadence,
+            act.maxSwimCadence,
+            ROUND(act.averageSpeed*3.6, 2) AS averageSpeed,
+            ROUND(act.maxSpeed*3.6, 2) AS maxSpeed,
+            act.averageSwolf,
+            ROUND(act.trainingEffect,2) AS trainingEffect,
+            act.trainingEffectLabel,
+            act.moderateIntensityMinutes,
+            act.vigorousIntensityMinutes,
+            act.averageTemperature,
+            act.maxTemperature,
+            act.minTemperature,
+            act.waterEstimated,
+            act.elevationGain,
+            act.elevationLoss,
+            act.startTimeLocal,
+            act.locationName,
+            act.activityName"""
+
+
+def _sql_page(limit, offset=0) -> str:
+    if limit is None:
+        return ""
+    return f"LIMIT {int(limit)} OFFSET {int(offset)}"
+
+
+def get_activity_by_id_query(activity_id: int) -> str:
+    return f"""
+        SELECT
+            {_activity_list_columns()}
+        FROM {ACTIVITIES} act
+        WHERE act.activityId = {int(activity_id)}
+        LIMIT 1;
+    """
+
+
+def get_recent_activities_query(sport_type, timerange, limit=None, offset=0):
     # Mapping old/new keys to a stable set
     if timerange == '8_weeks':
         timerange = '6_units'
@@ -241,41 +290,14 @@ def get_recent_activities_query(sport_type, timerange):
         WITH date_series AS (
             SELECT Week FROM UNNEST(GENERATE_DATE_ARRAY({start_date}, {end_date}, INTERVAL 7 DAY)) AS Week
         )
-        SELECT 
-            act.Day,    
-            act.activityTypeGrouped,
-            act.activityId,
-            ROUND(act.distance, 2) AS distance,
-            FORMAT_TIMESTAMP('%H:%M:%S', TIMESTAMP_SECONDS(CAST(act.duration AS INT64))) AS duration, 
-            act.calories, 
-            act.averageHR,
-            act.maxHR,
-            act.minHR,
-            act.totalNumberOfStrokes,
-            act.averageStrokeDistance,
-            act.averageSwimCadence,
-            act.maxSwimCadence,
-            ROUND(act.averageSpeed*3.6, 2) AS averageSpeed, 
-            ROUND(act.maxSpeed*3.6, 2) AS maxSpeed, 
-            act.averageSwolf,
-            ROUND(act.trainingEffect,2) AS trainingEffect,  
-            act.trainingEffectLabel, 
-            act.moderateIntensityMinutes,
-            act.vigorousIntensityMinutes,
-            act.averageTemperature,
-            act.maxTemperature,
-            act.minTemperature,
-            act.waterEstimated,
-            act.elevationGain,
-            act.elevationLoss,
-            act.startTimeLocal,
-            act.locationName,
-            act.activityName
+        SELECT
+            {_activity_list_columns()}
         FROM {ACTIVITIES} act
         JOIN date_series ds
             ON DATE(ds.Week) = DATE(act.Week)
         WHERE act.activityTypeGrouped = '{sport_type}'
-        ORDER BY act.Day DESC;
+        ORDER BY act.startTimeLocal DESC
+        {_sql_page(limit, offset)};
     """
 
 def get_all_races_query():
@@ -541,7 +563,28 @@ def get_volume_metrics_query(sport, granularity='week'):
         SELECT 'last_all' AS name, SUM(duration) AS duration_total, SUM(duration)/NULLIF((SELECT call FROM counts), 0) AS duration_avg, SUM(nb_trainings) AS nb_trainings, SUM(distance) AS distance_total, SUM(distance)/NULLIF((SELECT call FROM counts), 0) AS distance_avg, SUM(calories) AS calories, SUM(elevationGain) AS elevationGain, SUM(totalNumberOfStrokes) AS totalNumberOfStrokes, CAST(SUM(total_hr_duration) / NULLIF(SUM(duration),0) AS INT64) AS averageHR{extra_metrics} FROM full_periods;
     """
 
-def get_race_metrics_query(start_date, end_date):
+def get_race_metrics_query(start_date, end_date, race_end_date=None):
+    race_week = (
+        f"DATE_TRUNC(DATE('{race_end_date}'), WEEK(MONDAY))"
+        if race_end_date
+        else None
+    )
+    prep_weekly_cte = ""
+    prep_weekly_columns = ""
+    if race_week:
+        prep_weekly_cte = f""",
+        prep_weekly_stats AS (
+            SELECT * FROM weekly_stats
+            WHERE Week != {race_week}
+        )"""
+        prep_weekly_columns = f""",
+            COALESCE((SELECT AVG(week_swim_distance) FROM prep_weekly_stats), 0) AS average_prep_week_distance_swim,
+            COALESCE((SELECT AVG(week_bike_distance) FROM prep_weekly_stats), 0) AS average_prep_week_distance_bike,
+            COALESCE((SELECT AVG(week_run_distance) FROM prep_weekly_stats), 0) AS average_prep_week_distance_run,
+            COALESCE((SELECT AVG(week_sessions) FROM prep_weekly_stats), 0) AS average_prep_week_sessions,
+            COALESCE((SELECT AVG(week_elevation) FROM prep_weekly_stats), 0) AS average_prep_week_elevation,
+            COALESCE((SELECT AVG(week_duration) FROM prep_weekly_stats), 0) AS average_prep_duration_per_week"""
+
     return f"""
         WITH race_activities AS (
             SELECT * FROM {ACTIVITIES} WHERE DATE(startTimeLocal) >= '{start_date}' AND DATE(startTimeLocal) < '{end_date}'
@@ -556,7 +599,7 @@ def get_race_metrics_query(start_date, end_date):
                 SUM(elevationGain) AS week_elevation
             FROM race_activities
             GROUP BY Week
-        ),
+        ){prep_weekly_cte},
         monthly_stats AS (
             SELECT SUM(CASE WHEN activityTypeGrouped = 'swimming' THEN distance ELSE 0 END)/30.44 AS month_swim_distance, SUM(CASE WHEN activityTypeGrouped = 'cycling' THEN distance ELSE 0 END)/30.44 AS month_bike_distance, SUM(CASE WHEN activityTypeGrouped = 'running' THEN distance ELSE 0 END)/30.44 AS month_run_distance FROM race_activities
         ),
@@ -596,7 +639,7 @@ def get_race_metrics_query(start_date, end_date):
             COALESCE((SELECT AVG(month_bike_distance) FROM monthly_stats), 0) AS average_month_distance_bike,
             COALESCE((SELECT AVG(month_run_distance) FROM monthly_stats), 0) AS average_month_distance_run,
             COALESCE((SELECT AVG(week_duration) FROM weekly_stats), 0) AS average_duration_per_week,
-            COALESCE((SELECT avg_duration_8w FROM last_8_weeks), 0) AS average_duration_last_8_weeks;
+            COALESCE((SELECT avg_duration_8w FROM last_8_weeks), 0) AS average_duration_last_8_weeks{prep_weekly_columns};
     """
 
 def get_race_distance_by_timerange_query(start_date, end_date, granularity, sport_type):
@@ -704,7 +747,7 @@ def get_race_wellness_daily_query(start_date, end_date):
     """
 
 
-def get_race_activities_query(start_date, end_date, sport_types):
+def get_race_activities_query(start_date, end_date, sport_types, limit=None, offset=0):
     if len(sport_types) == 1:
         sport_filter = f"act.activityTypeGrouped = '{sport_types[0]}'"
     else:
@@ -731,7 +774,8 @@ def get_race_activities_query(start_date, end_date, sport_types):
         WHERE DATE(act.startTimeLocal) >= '{start_date}'
           AND DATE(act.startTimeLocal) < '{end_date}'
           AND {sport_filter}
-        ORDER BY act.startTimeLocal DESC;
+        ORDER BY act.startTimeLocal DESC
+        {_sql_page(limit, offset)};
     """
 
 

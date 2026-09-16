@@ -31,7 +31,7 @@ REPORT_SHARE_EXPIRY_DAYS = int(os.getenv("REPORT_SHARE_EXPIRY_DAYS", "7"))
 GCS_SIGNED_URL_MAX_DAYS = 7
 REPORT_PUBLIC_BASE_URL = os.getenv(
     "REPORT_PUBLIC_BASE_URL",
-    "https://garmin-stats-three.vercel.app/api/report",
+    "https://garmin-stats-three.vercel.app/r",
 ).rstrip("/")
 GCP_PROJECT_ID = os.getenv('GCP_PROJECT_ID', '').strip('"').strip("'") or None
 GCP_DATASET_ID = os.getenv('GCP_DATASET_ID', 'garmin_stats').strip('"').strip("'")
@@ -370,27 +370,40 @@ def query_bigquery_live(query: str):
 
 
 
-def publish_report_html(html: str, activity_id: int, date_str: str) -> tuple[str | None, int]:
-    """Upload an activity HTML report and return a short public share URL."""
+def publish_report_html(html: str, activity_id: int, date_str: str) -> tuple[str | None, str | None, int]:
+    """Upload an activity HTML report; return short share URL and optional GCS signed URL."""
     expiry_days = min(REPORT_SHARE_EXPIRY_DAYS, GCS_SIGNED_URL_MAX_DAYS)
     if bucket is None:
         logger.warning("Bucket not initialized. Cannot publish report.")
-        return None, expiry_days
+        return None, None, expiry_days
 
     token = secrets.token_urlsafe(8)
     share_path = f"reports/share/{token}.html"
     archive_path = f"reports/{activity_id}/report_{date_str}.html"
 
     try:
+        share_blob = None
         for gcs_path in (share_path, archive_path):
             blob = bucket.blob(gcs_path)
             blob.upload_from_string(html, content_type="text/html; charset=utf-8")
             blob.cache_control = "public, max-age=3600"
             blob.patch()
-        return f"{REPORT_PUBLIC_BASE_URL}/r/{token}", expiry_days
+            if gcs_path == share_path:
+                share_blob = blob
+
+        signed_url = None
+        if share_blob is not None and _gcs_credentials is not None:
+            signed_url = share_blob.generate_signed_url(
+                version="v4",
+                expiration=timedelta(days=expiry_days),
+                method="GET",
+                credentials=_gcs_credentials,
+            )
+
+        return f"{REPORT_PUBLIC_BASE_URL}/{token}", signed_url, expiry_days
     except Exception as e:
         logger.error(f"Failed to publish report HTML: {e}")
-        return None, expiry_days
+        return None, None, expiry_days
 
 
 def read_shared_report_html(token: str) -> str | None:
