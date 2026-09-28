@@ -9,7 +9,8 @@ __pycache__/
 # Custom additions
 *.db
 *.ipynb
-*.json
+credentials.json
+.garmin_tokens/
 # Distribution / packaging
 .Python
 build/
