@@ -49,7 +49,9 @@ GitHub runners are often **IP rate-limited** on Garmin password login. The weekl
 python scripts/export_garmin_tokens.py
 ```
 
-Copy the printed line into **Settings → Secrets → Actions → GARMINTOKENS**. Refresh when tokens expire (re-run the script after a successful local login). CI uses tokens only; password login is the fallback locally.
+Copy the printed line into **Settings → Secrets → Actions → GARMINTOKENS**. Refresh when tokens expire (re-run the script after a successful local login).
+
+**CI never uses password login** (GitHub runner IPs are rate-limited). If the workflow fails at Garmin login, the `GARMINTOKENS` secret is missing, expired, or was exported with the wrong `garminconnect` version — re-run `export_garmin_tokens.py` with `pip install -r requirements.txt` (pins `garminconnect==0.2.30`).
 
 ## Example query
 

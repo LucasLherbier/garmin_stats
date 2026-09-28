@@ -1,6 +1,7 @@
 import logging
 import os
 import time
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -12,6 +13,23 @@ logger = logging.getLogger(__name__)
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _DEFAULT_TOKEN_DIR = _REPO_ROOT / ".garmin_tokens"
 _LOGIN_RETRIES = 5
+_EXPECTED_GARMINCONNECT = "0.2.30"
+
+
+def _garminconnect_version() -> str:
+    try:
+        return version("garminconnect")
+    except PackageNotFoundError:
+        return "unknown"
+
+
+def _running_in_github_actions() -> bool:
+    return os.getenv("GITHUB_ACTIONS", "").lower() == "true"
+
+
+def _garmintokens_configured() -> bool:
+    raw = os.getenv("GARMINTOKENS", "").strip()
+    return bool(raw)
 
 
 def _token_dir() -> Path:
@@ -112,6 +130,30 @@ def _save_tokens(client: Garmin, token_dir: Path) -> None:
 
 
 def get_garmin_client(email, password):
+    gc_version = _garminconnect_version()
+    if gc_version != _EXPECTED_GARMINCONNECT:
+        logger.warning(
+            "garminconnect version is %s (expected %s). "
+            "Run: pip install -r requirements.txt",
+            gc_version,
+            _EXPECTED_GARMINCONNECT,
+        )
+
+    if _running_in_github_actions():
+        if _garmintokens_configured():
+            logger.info(
+                "GARMINTOKENS secret is set (%s chars); using OAuth only in CI.",
+                len(os.getenv("GARMINTOKENS", "").strip()),
+            )
+        else:
+            logger.error(
+                "GARMINTOKENS GitHub secret is missing or empty. "
+                "Password login is disabled on GitHub Actions (Garmin rate-limits runner IPs). "
+                "Locally run: pip install -r requirements.txt && python scripts/export_garmin_tokens.py "
+                "then add the printed blob to Settings → Secrets → Actions → GARMINTOKENS."
+            )
+            return None
+
     client = Garmin(email or "", password or "")
 
     for tokenstore, label in _token_store_candidates():
@@ -121,6 +163,15 @@ def get_garmin_client(email, password):
             return client
         except Exception as exc:
             logger.warning("OAuth login failed (%s): %s", label, exc)
+
+    if _running_in_github_actions():
+        logger.error(
+            "OAuth login failed in CI with the current GARMINTOKENS secret (expired or wrong format). "
+            "Re-export tokens with garminconnect %s and update the repo secret: "
+            "python scripts/export_garmin_tokens.py",
+            _EXPECTED_GARMINCONNECT,
+        )
+        return None
 
     if not email or not password:
         logger.error(
