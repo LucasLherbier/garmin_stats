@@ -148,3 +148,23 @@ def activity_heatmap(
         week_start = str(week_start_df.iloc[0]["week_start"])
 
     return {"sport": sport, "week_start": week_start, "cells": cells}
+
+
+@router.get("/activity-calendar")
+def activity_calendar(
+    year: int = Query(..., ge=2020, le=2100),
+    month: int = Query(..., ge=1, le=12),
+    query=Depends(get_query_fn),
+):
+    df = query(sql.get_activity_calendar_month_query(year, month))
+    activities = []
+    if not df.empty:
+        for _, row in df.iterrows():
+            activities.append(
+                {
+                    "day": int(row["day"]),
+                    "sport": str(row["sport"]),
+                    "slot": str(row["slot"]),
+                }
+            )
+    return {"year": year, "month": month, "activities": activities}

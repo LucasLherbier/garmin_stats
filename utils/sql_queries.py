@@ -799,6 +799,32 @@ def get_activity_heatmap_query(sport_filter_sql: str) -> str:
     """
 
 
+def get_activity_calendar_month_query(year: int, month: int) -> str:
+    """One row per activity in a calendar month (sport bucket + day + time slot)."""
+    month_start = f"{year:04d}-{month:02d}-01"
+    return f"""
+        SELECT
+            CAST(EXTRACT(DAY FROM startTimeLocal) AS INT64) AS day,
+            CASE
+                WHEN activityTypeGrouped = 'swimming' THEN 'swimming'
+                WHEN activityTypeGrouped = 'cycling' THEN 'cycling'
+                WHEN activityTypeGrouped = 'running' THEN 'running'
+                WHEN activityTypeGrouped = 'gym_fitness' THEN 'gym'
+                ELSE 'other'
+            END AS sport,
+            CASE
+                WHEN EXTRACT(HOUR FROM startTimeLocal) < 12 THEN 'AM'
+                WHEN EXTRACT(HOUR FROM startTimeLocal) < 18 THEN 'PM'
+                ELSE 'EV'
+            END AS slot
+        FROM {ACTIVITIES}
+        WHERE DATE(startTimeLocal) >= DATE('{month_start}')
+          AND DATE(startTimeLocal) < DATE_ADD(DATE('{month_start}'), INTERVAL 1 MONTH)
+          AND DATE(startTimeLocal) <= CURRENT_DATE()
+        ORDER BY startTimeLocal
+    """
+
+
 def get_activity_duration_by_granularity_query(start_date, end_date, granularity):
     if granularity == "week":
         time_group = "DATE_TRUNC(DATE(startTimeLocal), WEEK(MONDAY))"

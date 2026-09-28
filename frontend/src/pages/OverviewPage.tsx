@@ -1,28 +1,24 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
-import { FocusHeatmap } from '../components/FocusHeatmap';
+import { ActivityMonthCalendar } from '../components/ActivityMonthCalendar';
 import { MetricCard } from '../components/MetricCard';
 import { PageHeader } from '../components/PageHeader';
 import { SegmentedControl } from '../components/SegmentedControl';
 import { VolumeChart } from '../components/VolumeChart';
 import type { Granularity, OverviewSport, TimeRange } from '../types';
 import { formatDelta, formatDistance, formatDuration, formatDurationDelta } from '../utils/format';
-import type { Tone } from '../utils/tones';
 import { toneFromSport } from '../utils/tones';
 
-const HEATMAP_OPTIONS: Array<{ value: 'swimming' | 'cycling' | 'running' | 'race'; label: string }> = [
-  { value: 'running', label: 'Run' },
-  { value: 'cycling', label: 'Bike' },
-  { value: 'swimming', label: 'Swim' },
-  { value: 'race', label: 'Race' },
-];
+function currentYearMonth() {
+  const now = new Date();
+  return { year: now.getFullYear(), month: now.getMonth() + 1 };
+}
 
-const HEATMAP_TONES: Record<(typeof HEATMAP_OPTIONS)[number]['value'], Tone> = {
-  swimming: 'swim',
-  cycling: 'bike',
-  running: 'run',
-  race: 'gold',
-};
+function shiftMonth(year: number, month: number, delta: number) {
+  const d = new Date(year, month - 1 + delta, 1);
+  return { year: d.getFullYear(), month: d.getMonth() + 1 };
+}
+
 const SPORT_OPTIONS: Array<{ value: OverviewSport; label: string }> = [
   { value: 'duration', label: 'Overall' },
   { value: 'swimming', label: 'Swim' },
@@ -66,10 +62,10 @@ export function OverviewPage() {
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
-  const [heatmapSport, setHeatmapSport] = useState<(typeof HEATMAP_OPTIONS)[number]['value']>('running');
-  const [heatmap, setHeatmap] = useState<Awaited<ReturnType<typeof api.overview.activityHeatmap>> | null>(
-    null,
-  );
+  const [calendarMonth, setCalendarMonth] = useState(currentYearMonth);
+  const [calendar, setCalendar] = useState<
+    Awaited<ReturnType<typeof api.overview.activityCalendar>> | null
+  >(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -101,15 +97,23 @@ export function OverviewPage() {
 
   useEffect(() => {
     let cancelled = false;
-    api.overview.activityHeatmap(heatmapSport).then((data) => {
-      if (!cancelled) setHeatmap(data);
-    }).catch(() => {
-      if (!cancelled) setHeatmap(null);
-    });
+    api.overview
+      .activityCalendar(calendarMonth.year, calendarMonth.month)
+      .then((data) => {
+        if (!cancelled) setCalendar(data);
+      })
+      .catch(() => {
+        if (!cancelled) setCalendar(null);
+      });
     return () => {
       cancelled = true;
     };
-  }, [heatmapSport]);
+  }, [calendarMonth]);
+
+  const nowYm = currentYearMonth();
+  const canNextCalendarMonth =
+    calendarMonth.year < nowYm.year ||
+    (calendarMonth.year === nowYm.year && calendarMonth.month < nowYm.month);
 
   const unitLabel = granularity === 'week' ? 'Weeks' : 'Months';
   const yLabel = sport === 'duration' ? 'Duration' : 'Distance (km)';
@@ -231,12 +235,18 @@ export function OverviewPage() {
       ) : null}
 
       <section className="section-card">
-        <SegmentedControl options={HEATMAP_OPTIONS} value={heatmapSport} onChange={setHeatmapSport} />
-        <div style={{ height: 10 }} />
-        <FocusHeatmap
-          cells={heatmap?.cells ?? []}
-          tone={HEATMAP_TONES[heatmapSport]}
-          title="When you train this week"
+        <ActivityMonthCalendar
+          year={calendarMonth.year}
+          month={calendarMonth.month}
+          activities={calendar?.activities ?? []}
+          title="When you train"
+          onPrevMonth={() => setCalendarMonth((m) => shiftMonth(m.year, m.month, -1))}
+          onNextMonth={() => {
+            if (canNextCalendarMonth) {
+              setCalendarMonth((m) => shiftMonth(m.year, m.month, 1));
+            }
+          }}
+          canNextMonth={canNextCalendarMonth}
         />
       </section>
 

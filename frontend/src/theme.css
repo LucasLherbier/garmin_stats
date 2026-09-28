@@ -19,6 +19,10 @@
   --gold: #f5c14a;
   --gold-dim: rgba(245, 193, 74, 0.14);
   --gold-glow: rgba(245, 193, 74, 0.30);
+  --gym: #f472b6;
+  --gym-glow: rgba(244, 114, 182, 0.35);
+  --other: #94a3b8;
+  --other-glow: rgba(148, 163, 184, 0.3);
   --tone: var(--accent);
   --tone-dim: var(--accent-dim);
   --tone-glow: var(--accent-glow);
@@ -36,7 +40,7 @@
   --border-strong: rgba(255, 255, 255, 0.12);
   --card-shadow: 0 1px 0 rgba(255, 255, 255, 0.05), 0 12px 32px rgba(0, 0, 0, 0.28);
   --font-display: 'Outfit', 'DM Sans', system-ui, sans-serif;
-  --nav-height: 56px;
+  --nav-height: 64px;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --radius-sm: 10px;
   --radius-md: 16px;
@@ -292,6 +296,19 @@ a {
   box-shadow: none;
   padding: 0;
   margin: 0;
+}
+
+.wellness-charts-section .chart-card {
+  margin-bottom: 6px;
+}
+
+.wellness-charts-section .chart-card .section-title {
+  margin-bottom: 6px;
+  font-size: 0.8rem;
+}
+
+.wellness-charts-section .chart-card:last-child {
+  margin-bottom: 0;
 }
 
 .section-card .metric-card:not([class*='metric-card--']),
@@ -767,19 +784,18 @@ a {
 
 .bottom-nav {
   pointer-events: auto;
-  max-width: 380px;
+  max-width: min(100%, 440px);
   margin: 0 auto;
   display: flex;
-  justify-content: center;
+  justify-content: stretch;
+  align-items: stretch;
   gap: 2px;
-  padding: 6px 8px;
+  padding: 6px 6px 4px;
   background: rgba(18, 18, 18, 0.88);
   border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
+  border-radius: 20px;
   backdrop-filter: blur(20px);
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
-  overflow-x: auto;
-  scrollbar-width: none;
 }
 
 .bottom-nav::-webkit-scrollbar {
@@ -787,16 +803,27 @@ a {
 }
 
 .bottom-nav a {
-  flex: 0 0 auto;
-  width: 40px;
-  height: 40px;
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 4px 2px;
+  text-decoration: none;
+  color: var(--text-muted);
+  border-radius: 12px;
+  transition: color 0.2s, background 0.2s;
+}
+
+.bottom-nav-icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  text-decoration: none;
-  color: var(--text-muted);
-  border-radius: 50%;
-  transition: color 0.2s, background 0.2s;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
 }
 
 .bottom-nav a svg {
@@ -807,6 +834,18 @@ a {
   stroke-width: 1.75;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.bottom-nav-label {
+  font-size: 0.48rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  text-align: center;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .bottom-nav a.active {
@@ -1405,6 +1444,319 @@ a {
   background: color-mix(in srgb, var(--heat-color) calc(var(--heat, 0.7) * 100%), transparent);
   border-color: color-mix(in srgb, var(--heat-color) 45%, transparent);
   box-shadow: 0 0 14px color-mix(in srgb, var(--heat-glow) calc(var(--heat, 0.7) * 100%), transparent);
+}
+
+.activity-month-cal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.activity-month-cal-head .section-title {
+  margin: 0;
+}
+
+.activity-month-cal-sub {
+  margin: 4px 0 0;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.activity-month-cal-nav {
+  display: flex;
+  gap: 4px;
+}
+
+.activity-month-cal-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.activity-month-cal-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.activity-month-cal-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-bottom: 12px;
+}
+
+.activity-month-cal-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.62rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.activity-month-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.activity-month-cal-dow {
+  text-align: center;
+  font-size: 0.58rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding-bottom: 2px;
+}
+
+.activity-month-cal-day {
+  min-height: 44px;
+  padding: 4px 3px 3px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.03);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.activity-month-cal-day.empty {
+  visibility: hidden;
+  min-height: 0;
+  padding: 0;
+  border: none;
+}
+
+.activity-month-cal-day.today {
+  border-color: rgba(255, 107, 44, 0.45);
+  box-shadow: inset 0 0 0 1px rgba(255, 107, 44, 0.15);
+}
+
+.activity-month-cal-day.has-activity {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.activity-month-cal-num {
+  font-size: 0.58rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  line-height: 1;
+}
+
+.activity-month-cal-markers {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 3px;
+  flex: 1;
+  align-items: flex-start;
+}
+
+.activity-cal-marker {
+  flex-shrink: 0;
+  display: block;
+}
+
+.activity-cal-marker.sport-swimming {
+  --marker-color: var(--swim);
+  --marker-glow: var(--swim-glow);
+}
+
+.activity-cal-marker.sport-cycling {
+  --marker-color: var(--bike);
+  --marker-glow: var(--bike-glow);
+}
+
+.activity-cal-marker.sport-running {
+  --marker-color: var(--run);
+  --marker-glow: var(--run-glow);
+}
+
+.activity-cal-marker.sport-gym {
+  --marker-color: var(--gym);
+  --marker-glow: var(--gym-glow);
+}
+
+.activity-cal-marker.sport-other {
+  --marker-color: var(--other);
+  --marker-glow: var(--other-glow);
+}
+
+.activity-cal-marker.shape-circle {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--marker-color);
+  box-shadow: 0 0 6px var(--marker-glow);
+}
+
+.activity-cal-marker.shape-square {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  background: var(--marker-color);
+  box-shadow: 0 0 6px var(--marker-glow);
+}
+
+.activity-cal-marker.shape-line {
+  width: 10px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--marker-color);
+  box-shadow: 0 0 6px var(--marker-glow);
+}
+
+.activity-cal-marker.sport-gym.shape-square {
+  border: 1px solid var(--marker-color);
+  background: transparent;
+  box-shadow: none;
+}
+
+.activity-cal-marker.sport-other.shape-line {
+  opacity: 0.85;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--marker-color) 0 3px,
+    transparent 3px 5px
+  );
+}
+
+.race-volume-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.race-volume-hero-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+}
+
+.race-volume-hero-label {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.race-volume-hero-value {
+  font-family: var(--font-display);
+  font-size: 1.65rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+.race-volume-meta {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.race-volume-meta .lbl {
+  display: block;
+  font-size: 0.62rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.race-volume-meta .val {
+  font-size: 1rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.race-volume-dist-bar {
+  display: flex;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.06);
+  gap: 2px;
+}
+
+.race-volume-dist-seg {
+  min-width: 4px;
+  border-radius: 2px;
+}
+
+.race-volume-dist-seg.tone-swim {
+  background: var(--swim);
+}
+
+.race-volume-dist-seg.tone-bike {
+  background: var(--bike);
+}
+
+.race-volume-dist-seg.tone-run {
+  background: var(--run);
+}
+
+.race-volume-dist-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.race-volume-dist-item {
+  padding: 10px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  display: grid;
+  gap: 2px;
+}
+
+.race-volume-dist-item .race-volume-dist-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-bottom: 2px;
+}
+
+.race-volume-dist-item.tone-swim .race-volume-dist-dot {
+  background: var(--swim);
+}
+
+.race-volume-dist-item.tone-bike .race-volume-dist-dot {
+  background: var(--bike);
+  border-radius: 2px;
+}
+
+.race-volume-dist-item.tone-run .race-volume-dist-dot {
+  background: var(--run);
+  border-radius: 2px;
+}
+
+.race-volume-dist-item .lbl {
+  font-size: 0.58rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.race-volume-dist-item .val {
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.race-volume-dist-item .pct {
+  font-size: 0.62rem;
+  color: var(--text-muted);
 }
 
 .hero-stat-row {

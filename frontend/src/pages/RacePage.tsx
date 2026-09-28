@@ -303,7 +303,7 @@ export function RacePage() {
             />
           </section>
 
-          <section className="section-card">
+          <section className="section-card wellness-charts-section">
             <h2 className="section-title">Recovery & wellness</h2>
             <p className="section-caption">Daily wellness metrics — one point per day when data exists.</p>
             {detail.wellness?.charts.some((chart) => chart.points.length) ? (
@@ -321,6 +321,7 @@ export function RacePage() {
                     periodLabel="Day"
                     colorTheme="purple"
                     display="dots"
+                    height={132}
                   />
                 ) : null,
               )

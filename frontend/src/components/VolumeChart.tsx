@@ -27,6 +27,8 @@ interface VolumeChartProps {
   colorTheme?: ChartColorTheme;
   /** Area fill (default) or dot-only line for sparse daily data */
   display?: 'area' | 'dots';
+  /** Chart height in px (default 210; use ~140 for compact wellness charts) */
+  height?: number;
 }
 
 const THEME_COLORS = {
@@ -78,6 +80,7 @@ export function VolumeChart({
   periodLabel = 'Week',
   colorTheme = 'purple',
   display = 'area',
+  height = 210,
 }: VolumeChartProps) {
   if (!points.length) {
     return <div className="empty">No chart data for this range.</div>;
@@ -102,6 +105,8 @@ export function VolumeChart({
     definedValues.reduce((sum, point) => sum + point, 0) / Math.max(definedValues.length, 1);
 
   const gradId = `volFill-${yColumn}-${colorTheme}`;
+  const chartMargin =
+    height <= 150 ? { top: 4, right: 6, left: 0, bottom: 0 } : { top: 12, right: 8, left: 2, bottom: 0 };
 
   const commonAxes = (
     <>
@@ -153,9 +158,9 @@ export function VolumeChart({
   return (
     <div className="chart-card">
       {title ? <h3 className="section-title">{title}</h3> : null}
-      <ResponsiveContainer width="100%" height={210}>
+      <ResponsiveContainer width="100%" height={height}>
         {display === 'dots' ? (
-          <LineChart data={data} margin={{ top: 12, right: 8, left: 2, bottom: 0 }}>
+          <LineChart data={data} margin={chartMargin}>
             {commonAxes}
             <Line
               type="monotone"
@@ -178,7 +183,7 @@ export function VolumeChart({
             />
           </LineChart>
         ) : (
-          <AreaChart data={data} margin={{ top: 12, right: 8, left: 2, bottom: 0 }}>
+          <AreaChart data={data} margin={chartMargin}>
             <defs>
               <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor={colors.bright} stopOpacity={0.55} />

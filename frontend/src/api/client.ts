@@ -76,6 +76,16 @@ export const api = {
         week_start: string | null;
         cells: Array<{ dow: number; slot: 'AM' | 'PM' | 'EV'; count: number }>;
       }>(apiUrl('/overview/activity-heatmap', { sport })),
+    activityCalendar: (year: number, month: number) =>
+      request<{
+        year: number;
+        month: number;
+        activities: Array<{
+          day: number;
+          sport: 'swimming' | 'cycling' | 'running' | 'gym' | 'other';
+          slot: 'AM' | 'PM' | 'EV';
+        }>;
+      }>(apiUrl('/overview/activity-calendar', { year, month })),
   },
 
   sports: {

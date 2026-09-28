@@ -12,13 +12,13 @@ function IconBase({ children, ...props }: SvgProps & { children: ReactNode }) {
 
 export const Icons = {
   run: (p: SvgProps) => (
-    <IconBase {...p}><circle cx="14" cy="4" r="2" /><path d="M12 8 8 22h3l2-7 3 2 2 5h3l-3.5-9L12 8z" /></IconBase>
+    <IconBase {...p}><circle cx="13" cy="4" r="2" /><path d="M7 22l3-10 2 3 2-5 3 12" /></IconBase>
   ),
   swim: (p: SvgProps) => (
-    <IconBase {...p}><path d="M2 12h4l2-3 4 6 4-6 2 3h4" /><path d="M2 17h20" /></IconBase>
+    <IconBase {...p}><path d="M12 22a7 7 0 0 0 7-7c0-4-7-13-7-13S5 11 5 15a7 7 0 0 0 7 7z" /></IconBase>
   ),
   bike: (p: SvgProps) => (
-    <IconBase {...p}><circle cx="5.5" cy="17" r="3.5" /><circle cx="18.5" cy="17" r="3.5" /><path d="M9 17h6M12 6l3 5M9 11l-2 6M15 11l2 6" /></IconBase>
+    <IconBase {...p}><circle cx="5.5" cy="17.5" r="3.5" /><circle cx="18.5" cy="17.5" r="3.5" /><path d="M15 6a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm-3 11.5V14l-3-3 4-3 2 3h2" /></IconBase>
   ),
   distance: (p: SvgProps) => (
     <IconBase {...p}><path d="M3 3v18h18" /><path d="M7 16l4-8 4 5 5-9" /></IconBase>

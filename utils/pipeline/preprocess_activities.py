@@ -148,7 +148,8 @@ TRAINING_RACE_PERIODS = [
     {'start': '2024-12-30', 'end': '2025-09-21', 'distance': '70.3', 'race': 'Cervia 2025'},
     {'start': '2025-09-29', 'end': '2025-12-07', 'distance': '', 'race': 'California International Marathon 2025'},
     {'start': '2025-12-29', 'end': '2026-03-28', 'distance': '70.3', 'race': 'Oceanside 2026'},
-    {'start': '2026-05-18', 'end': '2026-09-13', 'distance': '70.3', 'race': 'Nice 2026'},
+    {'start': '2026-05-18', 'end': '2026-09-13', 'distance': '70.3', 'race': 'World Championships Nice 2026'},
+    {'start': '2026-09-21', 'end': '2026-11-22', 'distance': '70.3', 'race': 'Cozumel 2026'},
 ]
 
 OFF_SEASON_FALSE_PERIODS = [
@@ -158,6 +159,7 @@ OFF_SEASON_FALSE_PERIODS = [
     {'start': '2024-12-30', 'end': '2025-09-21'}, 
     {'start': '2025-12-29', 'end': '2026-03-29'},
     {'start': '2026-05-18', 'end': '2026-09-13'},
+    {'start': '2026-09-21', 'end': '2026-11-22'},
 ]
 
 def assign_periods(row):
