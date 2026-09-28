@@ -43,6 +43,14 @@ python scripts/backfill_daily_wellness.py --since 2022-05-01 --until 2026-08-25
 - **Weekly GitHub Action** runs `backfill_daily_wellness.py` (last 7 days) after activity extract.
 - **Weekly extract** also upserts daily wellness for each processed Mon–Sun window.
 
+GitHub runners are often **IP rate-limited** on Garmin password login. Use a **GARMINTOKENS** repo secret (OAuth blob from a local login):
+
+```powershell
+python scripts/export_garmin_tokens.py
+```
+
+Copy the printed line into **Settings → Secrets → Actions → GARMINTOKENS**. Refresh when tokens expire (re-run the script after a successful local login). CI uses tokens only; password login is the fallback locally.
+
 ## Example query
 
 ```sql
