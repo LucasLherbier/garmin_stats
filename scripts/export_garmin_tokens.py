@@ -13,7 +13,11 @@ from dotenv import load_dotenv
 
 load_dotenv(_ROOT / ".env")
 
-from utils.pipeline.garmin_cookies import get_garmin_client, load_credentials
+from utils.pipeline.garmin_cookies import (
+    export_token_blob,
+    get_garmin_client,
+    load_credentials,
+)
 
 
 def main() -> int:
@@ -24,11 +28,14 @@ def main() -> int:
     client = get_garmin_client(email, password)
     if not client:
         return 1
-    garth_client = getattr(client, "garth", None)
-    if garth_client is None or not hasattr(garth_client, "dumps"):
-        print("garminconnect client has no garth.dumps(); check garminconnect version.", file=sys.stderr)
+    blob = export_token_blob(client)
+    if not blob:
+        print(
+            "Could not export tokens; install garminconnect==0.2.30 (see requirements.txt) "
+            "and log in locally first.",
+            file=sys.stderr,
+        )
         return 1
-    blob = garth_client.dumps()
     print("\n--- Add repo secret GARMINTOKENS (entire line below) ---\n")
     print(blob)
     print("\n--- End GARMINTOKENS ---\n")

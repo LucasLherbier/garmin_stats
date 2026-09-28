@@ -150,16 +150,16 @@ def extract_weekly_activities(client, last_week_date, execution_date):
     
     return None
 
-def process_date_range(start_date):
+def process_date_range(start_date, client=None):
     start_date = datetime.strptime(start_date, "%Y-%m-%d")
     end_date = datetime.now()
 
-    # Connect to Garmin once
-    client = garmin_cookies.main()
-    logger.info(f"Client {client}")
-    if not client:
-        logger.error("Failed to connect to Garmin Connect. Check your credentials.")
-        return
+    if client is None:
+        client = garmin_cookies.main()
+        logger.info(f"Client {client}")
+        if not client:
+            logger.error("Failed to connect to Garmin Connect. Check your credentials.")
+            return
     
     while start_date.weekday() != 0:
         start_date -= timedelta(days=1)

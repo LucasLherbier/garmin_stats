@@ -24,17 +24,54 @@ def _token_dir() -> Path:
 
 
 def _env_token_blob() -> str:
-    """Inline OAuth payload (garth.dumps) for CI secrets."""
+    """Inline OAuth payload (garth.dumps / client.dumps) for CI secrets."""
     raw = os.getenv("GARMINTOKENS", "").strip()
     if raw and len(raw) > 512:
         return raw
     return ""
 
 
-def _tokens_present(token_dir: Path) -> bool:
-    return (token_dir / "oauth1_token.json").is_file() and (
+def _tokens_on_disk(token_dir: Path) -> bool:
+    if (token_dir / "oauth1_token.json").is_file() and (
         token_dir / "oauth2_token.json"
-    ).is_file()
+    ).is_file():
+        return True
+    if (token_dir / "garmin_tokens.json").is_file():
+        return True
+    return False
+
+
+def _token_store_candidates() -> list[tuple[str, str]]:
+    """OAuth sources to try before password login."""
+    candidates: list[tuple[str, str]] = []
+    blob = _env_token_blob()
+    if blob:
+        candidates.append((blob, "GARMINTOKENS inline secret"))
+    raw = os.getenv("GARMINTOKENS", "").strip()
+    if raw and len(raw) <= 512:
+        path = Path(os.path.expanduser(raw))
+        if path.is_dir() and _tokens_on_disk(path):
+            candidates.append((str(path), f"GARMINTOKENS directory ({path})"))
+    if _tokens_on_disk(_DEFAULT_TOKEN_DIR):
+        candidates.append((str(_DEFAULT_TOKEN_DIR), f"saved tokens ({_DEFAULT_TOKEN_DIR})"))
+    return candidates
+
+
+def _token_backend(client: Garmin):
+    garth = getattr(client, "garth", None)
+    if garth is not None:
+        return garth
+    inner = getattr(client, "client", None)
+    if inner is not None and hasattr(inner, "dumps"):
+        return inner
+    return None
+
+
+def export_token_blob(client: Garmin) -> str | None:
+    backend = _token_backend(client)
+    if backend is None or not hasattr(backend, "dumps"):
+        return None
+    return backend.dumps()
 
 
 def _rate_limited(exc: Exception) -> bool:
@@ -65,45 +102,36 @@ def _login_with_retry(client: Garmin, *, tokenstore: str | None = None) -> None:
 
 
 def _save_tokens(client: Garmin, token_dir: Path) -> None:
-    garth_client = getattr(client, "garth", None)
-    if garth_client is None or not hasattr(garth_client, "dump"):
-        logger.warning("Garmin client has no garth store; skipping token save.")
+    backend = _token_backend(client)
+    if backend is None or not hasattr(backend, "dump"):
+        logger.warning("Garmin client has no token store; skipping token save.")
         return
     token_dir.mkdir(parents=True, exist_ok=True)
-    garth_client.dump(str(token_dir))
+    backend.dump(str(token_dir))
     logger.info("Saved Garmin tokens to %s", token_dir)
 
 
 def get_garmin_client(email, password):
-    token_dir = _token_dir()
-    client = Garmin(email, password)
+    client = Garmin(email or "", password or "")
 
-    if _env_token_blob():
+    for tokenstore, label in _token_store_candidates():
         try:
-            _login_with_retry(client)
-            logger.info("Logged in to Garmin Connect using GARMINTOKENS env")
+            _login_with_retry(client, tokenstore=tokenstore)
+            logger.info("Logged in to Garmin Connect using %s", label)
             return client
         except Exception as exc:
-            logger.warning("GARMINTOKENS env login failed (%s).", exc)
-
-    if _tokens_present(token_dir):
-        try:
-            _login_with_retry(client, tokenstore=str(token_dir))
-            logger.info("Logged in to Garmin Connect using saved tokens (%s)", token_dir)
-            return client
-        except Exception as exc:
-            logger.warning("Saved tokens unusable (%s); trying password login.", exc)
+            logger.warning("OAuth login failed (%s): %s", label, exc)
 
     if not email or not password:
         logger.error(
             "Garmin login requires USER_EMAIL/USER_PASSWORD or valid GARMINTOKENS / %s",
-            token_dir,
+            _token_dir(),
         )
         return None
 
     try:
         _login_with_retry(client)
-        _save_tokens(client, token_dir)
+        _save_tokens(client, _token_dir())
         logger.info("Logged in to Garmin Connect with password")
         return client
     except Exception as e:
@@ -116,7 +144,9 @@ def load_credentials():
     email = os.getenv("USER_EMAIL")
     password = os.getenv("USER_PASSWORD")
     if not email or not password:
-        if _env_token_blob() or _tokens_present(_token_dir()):
+        if _env_token_blob() or _tokens_on_disk(_token_dir()) or _tokens_on_disk(
+            _DEFAULT_TOKEN_DIR
+        ):
             return None, None
         logger.error("USER_EMAIL or USER_PASSWORD environment variables not found.")
         return None, None

@@ -44,6 +44,4 @@ jobs:
         GEMINI_MODEL: ${{ secrets.GEMINI_MODEL }}
         PYTHONPATH: .
       run: |
-        python -m utils.pipeline.extract_weekly_activities --start_date $MONDAY_DATE
-        python scripts/backfill_workout_summaries.py --start_date $MONDAY_DATE
-        python scripts/backfill_daily_wellness.py
+        python scripts/weekly_garmin_sync.py --start_date $MONDAY_DATE
