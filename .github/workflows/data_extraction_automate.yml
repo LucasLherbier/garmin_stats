@@ -24,8 +24,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        pip install --force-reinstall --no-deps garminconnect==0.2.30
-        python -c "from importlib.metadata import version; v=version('garminconnect'); assert v=='0.2.30', f'Expected garminconnect 0.2.30, got {v}'"
+        python -c "from importlib.metadata import version; v=version('garminconnect'); assert v=='0.3.3', f'Expected garminconnect 0.3.3, got {v}'"
 
     - name: Calculate Monday 2 Weeks Ago
       run: |

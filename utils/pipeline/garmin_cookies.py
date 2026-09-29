@@ -101,7 +101,28 @@ def _rate_limited(exc: Exception) -> bool:
     return "429" in text or "rate limit" in text
 
 
+def _is_di_token_blob(tokenstore: str) -> bool:
+    return tokenstore.strip().startswith("{") and "di_token" in tokenstore
+
+
+def _login_with_di_blob(client: Garmin, blob: str) -> None:
+    """Load 0.3.x DI tokens without falling through to password login."""
+    inner = getattr(client, "client", None)
+    if inner is None or not hasattr(inner, "loads"):
+        raise RuntimeError(
+            "garminconnect 0.3.3 required for JSON GARMINTOKENS (run pip install -r requirements.txt)."
+        )
+    inner.loads(blob)
+    client.login(tokenstore=blob)
+    if not getattr(inner, "di_token", None):
+        raise RuntimeError("GARMINTOKENS did not set di_token — check secret value.")
+
+
 def _login_with_retry(client: Garmin, *, tokenstore: str | None = None) -> None:
+    if tokenstore and _is_di_token_blob(tokenstore):
+        _login_with_di_blob(client, tokenstore)
+        return
+
     last_exc: Exception | None = None
     for attempt in range(_LOGIN_RETRIES):
         try:
