@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _DEFAULT_TOKEN_DIR = _REPO_ROOT / ".garmin_tokens"
 _LOGIN_RETRIES = 5
-_EXPECTED_GARMINCONNECT = "0.2.30"
+_EXPECTED_GARMINCONNECT = "0.3.3"
 
 
 def _garminconnect_version() -> str:
@@ -42,9 +42,13 @@ def _token_dir() -> Path:
 
 
 def _env_token_blob() -> str:
-    """Inline OAuth payload (garth.dumps / client.dumps) for CI secrets."""
+    """Inline token JSON from client.dumps() (garminconnect 0.3+) for CI secrets."""
     raw = os.getenv("GARMINTOKENS", "").strip()
-    if raw and len(raw) > 512:
+    if not raw:
+        return ""
+    if raw.startswith("{") and "di_token" in raw:
+        return raw
+    if len(raw) > 512:
         return raw
     return ""
 

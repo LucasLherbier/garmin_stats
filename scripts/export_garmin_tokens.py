@@ -31,7 +31,7 @@ def main() -> int:
     blob = export_token_blob(client)
     if not blob:
         print(
-            "Could not export tokens; install garminconnect==0.2.30 (see requirements.txt) "
+            "Could not export tokens; install garminconnect==0.3.3 (see requirements.txt) "
             "and log in locally first.",
             file=sys.stderr,
         )
