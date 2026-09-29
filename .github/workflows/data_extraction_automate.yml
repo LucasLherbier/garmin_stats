@@ -14,10 +14,15 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
+    - name: Show revision (avoid re-running an old failed workflow)
+      run: |
+        echo "git HEAD: $(git rev-parse HEAD)"
+        git log -1 --oneline
+
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.11'
+        python-version: '3.12'
         cache: 'pip'
 
     - name: Install dependencies
