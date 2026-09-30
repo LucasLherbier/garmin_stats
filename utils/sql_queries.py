@@ -573,17 +573,20 @@ def get_race_metrics_query(start_date, end_date, race_end_date=None):
     prep_weekly_columns = ""
     if race_week:
         prep_weekly_cte = f""",
-        prep_weekly_stats AS (
+        last_prep_week AS (
             SELECT * FROM weekly_stats
             WHERE Week != {race_week}
+              AND Week < DATE_TRUNC(CURRENT_DATE(), WEEK(MONDAY))
+            ORDER BY Week DESC
+            LIMIT 1
         )"""
         prep_weekly_columns = f""",
-            COALESCE((SELECT AVG(week_swim_distance) FROM prep_weekly_stats), 0) AS average_prep_week_distance_swim,
-            COALESCE((SELECT AVG(week_bike_distance) FROM prep_weekly_stats), 0) AS average_prep_week_distance_bike,
-            COALESCE((SELECT AVG(week_run_distance) FROM prep_weekly_stats), 0) AS average_prep_week_distance_run,
-            COALESCE((SELECT AVG(week_sessions) FROM prep_weekly_stats), 0) AS average_prep_week_sessions,
-            COALESCE((SELECT AVG(week_elevation) FROM prep_weekly_stats), 0) AS average_prep_week_elevation,
-            COALESCE((SELECT AVG(week_duration) FROM prep_weekly_stats), 0) AS average_prep_duration_per_week"""
+            COALESCE((SELECT week_swim_distance FROM last_prep_week), 0) AS average_prep_week_distance_swim,
+            COALESCE((SELECT week_bike_distance FROM last_prep_week), 0) AS average_prep_week_distance_bike,
+            COALESCE((SELECT week_run_distance FROM last_prep_week), 0) AS average_prep_week_distance_run,
+            COALESCE((SELECT week_sessions FROM last_prep_week), 0) AS average_prep_week_sessions,
+            COALESCE((SELECT week_elevation FROM last_prep_week), 0) AS average_prep_week_elevation,
+            COALESCE((SELECT week_duration FROM last_prep_week), 0) AS average_prep_duration_per_week"""
 
     return f"""
         WITH race_activities AS (
