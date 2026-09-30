@@ -159,7 +159,7 @@ def process_date_range(start_date, client=None):
         logger.info(f"Client {client}")
         if not client:
             logger.error("Failed to connect to Garmin Connect. Check your credentials.")
-            return
+            raise SystemExit(1)
     
     while start_date.weekday() != 0:
         start_date -= timedelta(days=1)

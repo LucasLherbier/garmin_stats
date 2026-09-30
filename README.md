@@ -141,7 +141,7 @@ garmin_stats/
 ## 🚀 Tech details
 
 ### Prerequisites
-- Python 3.11+
+- Python 3.12+ (garminconnect 0.3.3+ requires 3.12)
 - A GCP project with BigQuery and Cloud Storage enabled
 - A GCP Service Account key (JSON) with `BigQuery Data Editor` + `Storage Object Admin` roles
 - A Garmin Connect account

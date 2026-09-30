@@ -1,0 +1,10 @@
+garminconnect-0.3.3.dist-info/METADATA,sha256=zE66CgRkm2LH4Win6Vm2gDFAQeWOGnHHfaVWJvBry5M,15572
+garminconnect-0.3.3.dist-info/WHEEL,sha256=Z36eTX6lG3PITRleSd5hAZHCcz52yg3c0JQVxKBbLW0,90
+garminconnect-0.3.3.dist-info/entry_points.txt,sha256=6OYgBcLyFCUgeqLgnvMyOJxPCWzgy7se4rLPKtNonMs,34
+garminconnect-0.3.3.dist-info/licenses/LICENSE,sha256=4jZuClJQxN79tVlTIT5OW_Ne3H98t-OSF-gTuOrcuLs,1074
+garminconnect/__init__.py,sha256=YYOT-NsCaRRXsvxS_WxqaVoV6L5a9HaULQFQwLH7ugo,125784
+garminconnect/client.py,sha256=dgmJZDlQNUCNfEnroFNBaQQTIx_LImbIGHA-KCD2Ljo,45185
+garminconnect/exceptions.py,sha256=D-HrjfRfZVFx1rqs0BYNbTYYAGCEjb2cTIeMPC7EKzM,414
+garminconnect/fit.py,sha256=wbK0UOn7PZG0Xq8MOAb5jcDVT9CAiWvnSasv0By8BYE,15690
+garminconnect/workout.py,sha256=Uvr-f70L2JLHfl3hx-sROCGwFuMCEfM62zHKfF9pVdk,10460
+garminconnect-0.3.3.dist-info/RECORD,,

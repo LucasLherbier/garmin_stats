@@ -43,15 +43,24 @@ python scripts/backfill_daily_wellness.py --since 2022-05-01 --until 2026-08-25
 - **Weekly GitHub Action** runs `backfill_daily_wellness.py` (last 7 days) after activity extract.
 - **Weekly extract** also upserts daily wellness for each processed Mon–Sun window.
 
-GitHub runners are often **IP rate-limited** on Garmin password login. The weekly Action logs in **once** and reuses that session for activities and wellness. Use a **GARMINTOKENS** repo secret (OAuth blob from a local login):
+GitHub Actions needs **one secret only: `GARMINTOKENS`** (one line of JSON from `export_garmin_tokens.py`, starting with `{"di_token":`). CI does **not** use `USER_EMAIL` / `USER_PASSWORD` for login.
+
+**Option A** — local password login works:
 
 ```powershell
+pip install -r requirements.txt
 python scripts/export_garmin_tokens.py
 ```
 
-Copy the printed line into **Settings → Secrets → Actions → GARMINTOKENS**. Refresh when tokens expire (re-run the script after a successful local login).
+**Option B** — SSO returns 429 (browser login):
 
-**CI never uses password login** (GitHub runner IPs are rate-limited). If the workflow fails at Garmin login, the `GARMINTOKENS` secret is missing, expired, or was exported with the wrong `garminconnect` version — re-run `export_garmin_tokens.py` with `pip install -r requirements.txt` (pins `garminconnect==0.2.30`).
+```powershell
+pip install playwright requests requests-oauthlib
+python -m playwright install chromium
+python scripts/garmin_browser_auth.py
+```
+
+Paste the printed line into **Settings → Secrets → Actions → GARMINTOKENS**, then re-run **Weekly Garmin Sync**. Re-export when tokens expire.
 
 ## Example query
 
