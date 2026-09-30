@@ -564,26 +564,19 @@ def get_volume_metrics_query(sport, granularity='week'):
     """
 
 def get_race_metrics_query(start_date, end_date, race_end_date=None):
-    race_week = (
-        f"DATE_TRUNC(DATE('{race_end_date}'), WEEK(MONDAY))"
-        if race_end_date
-        else None
-    )
-    prep_weekly_cte = ""
+    current_week_monday = "DATE_TRUNC(CURRENT_DATE(), WEEK(MONDAY))"
+    race_week_filter = ""
     prep_weekly_columns = ""
-    if race_week:
-        prep_weekly_cte = f""",
-        prep_weekly_stats AS (
-            SELECT * FROM weekly_stats
-            WHERE Week != {race_week}
-        )"""
+    if race_end_date:
+        race_week = f"DATE_TRUNC(DATE('{race_end_date}'), WEEK(MONDAY))"
+        race_week_filter = f"\n                AND Week != {race_week}"
         prep_weekly_columns = f""",
-            COALESCE((SELECT AVG(week_swim_distance) FROM prep_weekly_stats), 0) AS average_prep_week_distance_swim,
-            COALESCE((SELECT AVG(week_bike_distance) FROM prep_weekly_stats), 0) AS average_prep_week_distance_bike,
-            COALESCE((SELECT AVG(week_run_distance) FROM prep_weekly_stats), 0) AS average_prep_week_distance_run,
-            COALESCE((SELECT AVG(week_sessions) FROM prep_weekly_stats), 0) AS average_prep_week_sessions,
-            COALESCE((SELECT AVG(week_elevation) FROM prep_weekly_stats), 0) AS average_prep_week_elevation,
-            COALESCE((SELECT AVG(week_duration) FROM prep_weekly_stats), 0) AS average_prep_duration_per_week"""
+            COALESCE((SELECT AVG(week_swim_distance) FROM averaging_weekly_stats), 0) AS average_prep_week_distance_swim,
+            COALESCE((SELECT AVG(week_bike_distance) FROM averaging_weekly_stats), 0) AS average_prep_week_distance_bike,
+            COALESCE((SELECT AVG(week_run_distance) FROM averaging_weekly_stats), 0) AS average_prep_week_distance_run,
+            COALESCE((SELECT AVG(week_sessions) FROM averaging_weekly_stats), 0) AS average_prep_week_sessions,
+            COALESCE((SELECT AVG(week_elevation) FROM averaging_weekly_stats), 0) AS average_prep_week_elevation,
+            COALESCE((SELECT AVG(week_duration) FROM averaging_weekly_stats), 0) AS average_prep_duration_per_week"""
 
     return f"""
         WITH race_activities AS (
@@ -599,7 +592,15 @@ def get_race_metrics_query(start_date, end_date, race_end_date=None):
                 SUM(elevationGain) AS week_elevation
             FROM race_activities
             GROUP BY Week
-        ){prep_weekly_cte},
+        ),
+        completed_weekly_stats AS (
+            SELECT * FROM weekly_stats
+            WHERE Week < {current_week_monday}
+        ),
+        averaging_weekly_stats AS (
+            SELECT * FROM completed_weekly_stats
+            WHERE TRUE{race_week_filter}
+        ),
         monthly_stats AS (
             SELECT SUM(CASE WHEN activityTypeGrouped = 'swimming' THEN distance ELSE 0 END)/30.44 AS month_swim_distance, SUM(CASE WHEN activityTypeGrouped = 'cycling' THEN distance ELSE 0 END)/30.44 AS month_bike_distance, SUM(CASE WHEN activityTypeGrouped = 'running' THEN distance ELSE 0 END)/30.44 AS month_run_distance FROM race_activities
         ),
@@ -613,9 +614,9 @@ def get_race_metrics_query(start_date, end_date, race_end_date=None):
                 AVG(week_elevation) AS avg_8w_elevation
             FROM (
                 SELECT week_duration, week_swim_distance, week_bike_distance, week_run_distance, week_sessions, week_elevation
-                FROM weekly_stats
+                FROM averaging_weekly_stats
                 ORDER BY Week DESC
-                LIMIT 8 OFFSET 1
+                LIMIT 8
             )
         )
         SELECT
@@ -625,11 +626,11 @@ def get_race_metrics_query(start_date, end_date, race_end_date=None):
             COALESCE((SELECT SUM(distance) FROM race_activities WHERE activityTypeGrouped = 'swimming'), 0) AS total_distance_swim,
             COALESCE((SELECT SUM(distance) FROM race_activities WHERE activityTypeGrouped = 'cycling'), 0) AS total_distance_bike,
             COALESCE((SELECT SUM(distance) FROM race_activities WHERE activityTypeGrouped = 'running'), 0) AS total_distance_run,
-            COALESCE((SELECT AVG(week_swim_distance) FROM weekly_stats), 0) AS average_week_distance_swim,
-            COALESCE((SELECT AVG(week_bike_distance) FROM weekly_stats), 0) AS average_week_distance_bike,
-            COALESCE((SELECT AVG(week_run_distance) FROM weekly_stats), 0) AS average_week_distance_run,
-            COALESCE((SELECT AVG(week_sessions) FROM weekly_stats), 0) AS average_week_sessions,
-            COALESCE((SELECT AVG(week_elevation) FROM weekly_stats), 0) AS average_week_elevation,
+            COALESCE((SELECT AVG(week_swim_distance) FROM completed_weekly_stats), 0) AS average_week_distance_swim,
+            COALESCE((SELECT AVG(week_bike_distance) FROM completed_weekly_stats), 0) AS average_week_distance_bike,
+            COALESCE((SELECT AVG(week_run_distance) FROM completed_weekly_stats), 0) AS average_week_distance_run,
+            COALESCE((SELECT AVG(week_sessions) FROM completed_weekly_stats), 0) AS average_week_sessions,
+            COALESCE((SELECT AVG(week_elevation) FROM completed_weekly_stats), 0) AS average_week_elevation,
             COALESCE((SELECT avg_8w_swim FROM last_8_weeks), 0) AS average_8week_distance_swim,
             COALESCE((SELECT avg_8w_bike FROM last_8_weeks), 0) AS average_8week_distance_bike,
             COALESCE((SELECT avg_8w_run FROM last_8_weeks), 0) AS average_8week_distance_run,
@@ -638,7 +639,7 @@ def get_race_metrics_query(start_date, end_date, race_end_date=None):
             COALESCE((SELECT AVG(month_swim_distance) FROM monthly_stats), 0) AS average_month_distance_swim,
             COALESCE((SELECT AVG(month_bike_distance) FROM monthly_stats), 0) AS average_month_distance_bike,
             COALESCE((SELECT AVG(month_run_distance) FROM monthly_stats), 0) AS average_month_distance_run,
-            COALESCE((SELECT AVG(week_duration) FROM weekly_stats), 0) AS average_duration_per_week,
+            COALESCE((SELECT AVG(week_duration) FROM completed_weekly_stats), 0) AS average_duration_per_week,
             COALESCE((SELECT avg_duration_8w FROM last_8_weeks), 0) AS average_duration_last_8_weeks{prep_weekly_columns};
     """
 

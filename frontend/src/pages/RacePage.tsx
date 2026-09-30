@@ -6,9 +6,11 @@ import { LoadMoreButton } from '../components/LoadMoreButton';
 import { PageHeader } from '../components/PageHeader';
 import { RaceVolumeMetrics, type RaceVolumeKey } from '../components/RaceVolumeMetrics';
 import { SegmentedControl } from '../components/SegmentedControl';
+import { HrvRecoveryChart } from '../components/HrvRecoveryChart';
 import { VolumeChart } from '../components/VolumeChart';
 import { VolumeStackChart } from '../components/VolumeStackChart';
 import type { Granularity } from '../types';
+import { prepWeekNumber } from '../utils/prepWeek';
 import { activityPath, racePath } from '../utils/paths';
 
 type RaceChartView = 'swimming' | 'cycling' | 'running' | 'volume';
@@ -108,6 +110,18 @@ export function RacePage() {
     () => races.find((race) => race.slug === selectedSlug) ?? races[0] ?? null,
     [races, selectedSlug],
   );
+
+  const trainingVolumeTitle = useMemo(() => {
+    const race = detail?.race;
+    if (!race?.start || !race?.end) {
+      return 'Trainings Volume';
+    }
+    const week = prepWeekNumber(race.start, race.end);
+    if (week == null) {
+      return 'Trainings Volume';
+    }
+    return `Trainings Volume — Week ${week}`;
+  }, [detail?.race]);
 
   useEffect(() => {
     api.race
@@ -232,7 +246,7 @@ export function RacePage() {
       {detail && !detail.empty ? (
         <>
           <section className="section-card tone-hero training-volume-hero">
-            <h2 className="section-title">Trainings Volume</h2>
+            <h2 className="section-title">{trainingVolumeTitle}</h2>
             <RaceVolumeMetrics
               rows={detail.training_volume}
               volumeKey={volumeKey}
@@ -309,20 +323,29 @@ export function RacePage() {
             {detail.wellness?.charts.some((chart) => chart.points.length) ? (
               detail.wellness.charts.map((chart) =>
                 chart.points.length ? (
-                  <VolumeChart
-                    key={chart.key}
-                    points={chart.points.map((p) => ({
-                      Week: p.time_period,
-                      value: p.value,
-                    }))}
-                    yColumn="value"
-                    yLabel={chart.y_axis_title}
-                    title={chart.label}
-                    periodLabel="Day"
-                    colorTheme="purple"
-                    display="dots"
-                    height={132}
-                  />
+                  chart.key === 'avg_hrv' ? (
+                    <HrvRecoveryChart
+                      key={chart.key}
+                      title={chart.label}
+                      points={chart.points}
+                      height={148}
+                    />
+                  ) : (
+                    <VolumeChart
+                      key={chart.key}
+                      points={chart.points.map((p) => ({
+                        Week: p.time_period,
+                        value: p.value,
+                      }))}
+                      yColumn="value"
+                      yLabel={chart.y_axis_title}
+                      title={chart.label}
+                      periodLabel="Day"
+                      colorTheme="purple"
+                      display="dots"
+                      height={132}
+                    />
+                  )
                 ) : null,
               )
             ) : (

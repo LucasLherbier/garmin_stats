@@ -10,6 +10,7 @@ import {
   YAxis,
 } from 'recharts';
 import { CHART, tooltipStyle } from '../chartTheme';
+import { ChartNote } from './ChartNote';
 import { formatDurationChart } from '../utils/format';
 import {
   metricHasData,
@@ -88,9 +89,14 @@ export function TelemetryChart({ rows, sport }: TelemetryChartProps) {
   return (
     <div className="chart-card">
       <h3 className="section-title">Telemetry</h3>
-      <p className="section-caption">30 s rolling average · full activity duration on x-axis</p>
+      <ChartNote
+        parts={[
+          '30 s rolling average',
+          'Full activity duration on the x-axis',
+        ]}
+      />
       {!metrics.includes('Cadence') && metrics.includes('Speed') && sport === 'running' ? (
-        <p className="section-caption">Cadence not in TCX — showing speed instead.</p>
+        <ChartNote parts={['Cadence not in TCX — showing speed instead']} />
       ) : null}
       <div className="metric-grid" style={{ marginBottom: 10 }}>
         <select

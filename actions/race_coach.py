@@ -225,11 +225,31 @@ def format_volume_context(race_metrics: pd.DataFrame) -> str:
     if race_metrics.empty:
         return ""
     r = race_metrics.iloc[0]
+    duration_key = (
+        "average_prep_duration_per_week"
+        if "average_prep_duration_per_week" in r.index
+        else "average_duration_per_week"
+    )
+    swim_key = (
+        "average_prep_week_distance_swim"
+        if "average_prep_week_distance_swim" in r.index
+        else "average_week_distance_swim"
+    )
+    bike_key = (
+        "average_prep_week_distance_bike"
+        if "average_prep_week_distance_bike" in r.index
+        else "average_week_distance_bike"
+    )
+    run_key = (
+        "average_prep_week_distance_run"
+        if "average_prep_week_distance_run" in r.index
+        else "average_week_distance_run"
+    )
     return (
-        f"Avg weekly duration: {ut.format_duration(r.get('average_duration_per_week'))}; "
-        f"weekly avg km — swim {r.get('average_week_distance_swim') or 0:.1f}, "
-        f"bike {r.get('average_week_distance_bike') or 0:.1f}, "
-        f"run {r.get('average_week_distance_run') or 0:.1f}; "
+        f"Avg weekly duration: {ut.format_duration(r.get(duration_key))}; "
+        f"weekly avg km — swim {r.get(swim_key) or 0:.1f}, "
+        f"bike {r.get(bike_key) or 0:.1f}, "
+        f"run {r.get(run_key) or 0:.1f}; "
         f"prep totals km — swim {r.get('total_distance_swim') or 0:.0f}, "
         f"bike {r.get('total_distance_bike') or 0:.0f}, "
         f"run {r.get('total_distance_run') or 0:.0f}."

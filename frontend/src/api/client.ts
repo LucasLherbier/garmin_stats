@@ -116,6 +116,7 @@ export const api = {
         power_profile: {
           display_labels: string[];
           values: number[];
+          np_values?: (number | null)[];
           seconds: number[];
         } | null;
         workout_laps: Record<string, unknown>[] | null;
@@ -153,6 +154,15 @@ export const api = {
     detail: (raceKey: string | number, granularity: string) =>
       request<{
         empty: boolean;
+        race?: {
+          index: number;
+          slug: string;
+          display: string;
+          start: string;
+          end: string;
+          distance: string;
+          race: string;
+        };
         training_volume: Array<{
           key: 'total' | 'weekly' | '8w';
           title: string;

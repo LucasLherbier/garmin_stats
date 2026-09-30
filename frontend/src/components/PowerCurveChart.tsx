@@ -11,27 +11,32 @@ import {
   YAxis,
 } from 'recharts';
 import { CHART, tooltipStyle } from '../chartTheme';
+import { ChartNote } from './ChartNote';
 
 interface PowerCurveChartProps {
   displayLabels: string[];
   values: number[];
   seconds: number[];
-  npW?: number | null;
+  npValues?: (number | null)[];
 }
 
-export function PowerCurveChart({ displayLabels, values, seconds, npW }: PowerCurveChartProps) {
+export function PowerCurveChart({ displayLabels, values, seconds, npValues }: PowerCurveChartProps) {
   if (values.length < 2) {
     return <div className="empty">No power curve for this activity.</div>;
   }
 
-  const np = npW != null && npW > 0 ? Math.round(npW) : null;
-
-  const data = displayLabels.map((label, i) => ({
-    label,
-    seconds: seconds[i],
-    watts: values[i],
-    np,
-  }));
+  const data = displayLabels.map((label, i) => {
+    const rawNp = npValues?.[i];
+    const np =
+      rawNp != null && Number(rawNp) > 0 ? Math.round(Number(rawNp)) : null;
+    return {
+      label,
+      seconds: seconds[i],
+      watts: values[i],
+      np,
+    };
+  });
+  const hasNp = data.some((item) => item.np != null);
 
   const labelBySeconds = useMemo(
     () => Object.fromEntries(data.map((item) => [item.seconds, item.label])),
@@ -43,9 +48,12 @@ export function PowerCurveChart({ displayLabels, values, seconds, npW }: PowerCu
   return (
     <div className="chart-card">
       <h3 className="section-title">Power curve</h3>
-      <p className="section-caption">
-        Peak power = best average over each duration · NP = ride normalized power
-      </p>
+      <ChartNote
+        parts={[
+          'Peak power: best average over each duration',
+          'NP: normalized power for that peak window',
+        ]}
+      />
       <ResponsiveContainer width="100%" height={280}>
         <LineChart data={data} margin={{ top: 24, right: 12, left: 2, bottom: 4 }}>
           <CartesianGrid stroke={CHART.grid} vertical={false} />
@@ -70,7 +78,11 @@ export function PowerCurveChart({ displayLabels, values, seconds, npW }: PowerCu
           />
           <Tooltip
             contentStyle={tooltipStyle}
-            formatter={(value, name) => [`${Math.round(Number(value))} W`, String(name)]}
+            formatter={(value, name) => {
+              if (value == null || Number.isNaN(Number(value))) return [null, null];
+              const label = name === 'watts' ? 'Peak power' : name === 'np' ? 'NP' : String(name);
+              return [`${Math.round(Number(value))} W`, label];
+            }}
             labelFormatter={(_, payload) => payload?.[0]?.payload?.label ?? ''}
           />
           <Legend wrapperStyle={{ fontSize: 10, color: CHART.tick }} />
@@ -91,7 +103,7 @@ export function PowerCurveChart({ displayLabels, values, seconds, npW }: PowerCu
               fontSize={9}
             />
           </Line>
-          {np != null ? (
+          {hasNp ? (
             <Line
               type="monotone"
               dataKey="np"
@@ -99,8 +111,9 @@ export function PowerCurveChart({ displayLabels, values, seconds, npW }: PowerCu
               stroke="#ff6b2c"
               strokeWidth={1.5}
               strokeDasharray="5 4"
-              dot={false}
-              activeDot={false}
+              dot={{ r: 3, fill: '#ff6b2c', strokeWidth: 0 }}
+              activeDot={{ r: 4 }}
+              connectNulls={false}
               legendType="line"
             />
           ) : null}

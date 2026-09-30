@@ -235,10 +235,10 @@ export function ActivityDetailPage() {
                 value={`${Number(activity.averageSpeed ?? 0).toFixed(1)} km/h`}
               />
               <DetailMetric
-                label="Calories"
+                label="Avg Heart Rate"
                 value={
-                  activity.calories
-                    ? `${Math.round(Number(activity.calories))} Cal`
+                  activity.averageHR
+                    ? `${Math.round(Number(activity.averageHR))} bpm`
                     : '—'
                 }
               />
@@ -291,7 +291,7 @@ export function ActivityDetailPage() {
                 displayLabels={detail.power_profile.display_labels}
                 values={detail.power_profile.values}
                 seconds={detail.power_profile.seconds}
-                npW={detail.avg_np_w}
+                npValues={detail.power_profile.np_values}
               />
             </>
           ) : null}

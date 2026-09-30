@@ -3,6 +3,7 @@ import { api } from '../api/client';
 import { ActivityMonthCalendar } from '../components/ActivityMonthCalendar';
 import { MetricCard } from '../components/MetricCard';
 import { PageHeader } from '../components/PageHeader';
+import { SyncButton } from '../components/SyncButton';
 import { SegmentedControl } from '../components/SegmentedControl';
 import { VolumeChart } from '../components/VolumeChart';
 import type { Granularity, OverviewSport, TimeRange } from '../types';
@@ -58,10 +59,6 @@ export function OverviewPage() {
     null,
   );
   const [benchmarks, setBenchmarks] = useState<Record<string, unknown>[]>([]);
-  const [syncPassword, setSyncPassword] = useState('');
-  const [syncing, setSyncing] = useState(false);
-  const [syncMessage, setSyncMessage] = useState<string | null>(null);
-  const [syncError, setSyncError] = useState<string | null>(null);
   const [calendarMonth, setCalendarMonth] = useState(currentYearMonth);
   const [calendar, setCalendar] = useState<
     Awaited<ReturnType<typeof api.overview.activityCalendar>> | null
@@ -119,56 +116,9 @@ export function OverviewPage() {
   const yLabel = sport === 'duration' ? 'Duration' : 'Distance (km)';
   const mixTotal = totals?.sports.reduce((sum, s) => sum + (s.duration ?? 0), 0) ?? 0;
 
-  async function handleSync() {
-    if (!syncPassword.trim()) {
-      setSyncError('Enter the sync password.');
-      return;
-    }
-    setSyncing(true);
-    setSyncMessage(null);
-    setSyncError(null);
-    try {
-      const result = await api.report.sync(syncPassword);
-      setSyncMessage(result.message);
-      if (!result.ok) setSyncError(result.message);
-    } catch (e) {
-      setSyncError(e instanceof Error ? e.message : 'Sync failed');
-    } finally {
-      setSyncing(false);
-    }
-  }
-
   return (
     <main className="page">
-      <PageHeader title="Dashboard" />
-
-      <section className="section-card tone-hero">
-        <h2 className="section-title">Sync data</h2>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: 0 }}>
-          Trigger the weekly Garmin extract on GitHub Actions.
-        </p>
-        <input
-          type="password"
-          className="form-field"
-          placeholder="Sync password"
-          value={syncPassword}
-          autoComplete="current-password"
-          disabled={syncing}
-          onChange={(e) => setSyncPassword(e.target.value)}
-        />
-        <button
-          type="button"
-          className="btn-primary"
-          disabled={syncing || !syncPassword.trim()}
-          onClick={handleSync}
-        >
-          {syncing ? 'Starting sync…' : 'Upload / Sync'}
-        </button>
-        {syncMessage ? (
-          <p style={{ color: 'var(--accent)', fontSize: '0.85rem' }}>{syncMessage}</p>
-        ) : null}
-        {syncError ? <div className="error">{syncError}</div> : null}
-      </section>
+      <PageHeader title="Home" action={<SyncButton />} />
       {loading ? <div className="loading">Loading…</div> : null}
       {error ? <div className="error">{error}</div> : null}
 

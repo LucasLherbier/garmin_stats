@@ -13,16 +13,6 @@ const items = [
     ),
   },
   {
-    to: '/stats',
-    label: 'Stats',
-    shortLabel: 'Stats',
-    icon: (
-      <svg viewBox="0 0 24 24" aria-hidden>
-        <path d="M4 20V10M10 20V4M16 20v-6M22 20V8" />
-      </svg>
-    ),
-  },
-  {
     to: '/swim',
     label: 'Swim',
     shortLabel: 'Swim',
@@ -82,6 +72,16 @@ const items = [
       </svg>
     ),
   },
+  {
+    to: '/stats',
+    label: 'Stats',
+    shortLabel: 'Stats',
+    icon: (
+      <svg viewBox="0 0 24 24" aria-hidden>
+        <path d="M4 20V10M10 20V4M16 20v-6M22 20V8" />
+      </svg>
+    ),
+  },
 ];
 
 export function BottomNav() {
@@ -96,8 +96,10 @@ export function BottomNav() {
           aria-label={item.label}
           title={item.label}
         >
-          <span className="bottom-nav-icon">{item.icon}</span>
-          <span className="bottom-nav-label">{item.shortLabel}</span>
+          <span className="bottom-nav-pill">
+            <span className="bottom-nav-icon">{item.icon}</span>
+            <span className="bottom-nav-label">{item.shortLabel}</span>
+          </span>
         </NavLink>
       ))}
     </nav>

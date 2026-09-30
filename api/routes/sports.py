@@ -230,11 +230,13 @@ def activity_detail(activity_id: int, query=Depends(get_query_fn)):
                     profile = None
                 if profile:
                     curve = profile.get("power_curve", {})
+                    curve_np = profile.get("power_curve_np") or {}
                     labels = [label for label in POWER_CURVE_DURATIONS if curve.get(label) is not None]
                     result["power_profile"] = {
                         "labels": labels,
                         "display_labels": [duration_display_label(l) for l in labels],
                         "values": [curve[l] for l in labels],
+                        "np_values": [curve_np.get(l) for l in labels],
                         "seconds": [POWER_CURVE_DURATIONS[l] for l in labels],
                         "skills": profile.get("power_skills"),
                         "metadata": profile.get("metadata"),

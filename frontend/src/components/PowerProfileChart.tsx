@@ -1,6 +1,7 @@
 import {
   PolarAngleAxis,
   PolarGrid,
+  PolarRadiusAxis,
   Radar,
   RadarChart,
   ResponsiveContainer,
@@ -21,6 +22,7 @@ export function PowerProfileChart({ displayLabels, values }: PowerProfileChartPr
     label,
     watts: values[i],
   }));
+  const vMax = Math.max(...values);
 
   return (
     <div className="chart-card">
@@ -28,6 +30,14 @@ export function PowerProfileChart({ displayLabels, values }: PowerProfileChartPr
       <ResponsiveContainer width="100%" height={260}>
         <RadarChart data={data} cx="50%" cy="50%" outerRadius="72%">
           <PolarGrid stroke="rgba(255,255,255,0.08)" />
+          <PolarRadiusAxis
+            angle={90}
+            domain={[0, vMax]}
+            tick={{ fill: CHART.tick, fontSize: 8 }}
+            tickCount={5}
+            axisLine={false}
+            tickFormatter={(v) => `${Math.round(Number(v))}`}
+          />
           <PolarAngleAxis
             dataKey="label"
             tick={{ fill: CHART.tick, fontSize: 10 }}

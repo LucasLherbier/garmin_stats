@@ -107,15 +107,45 @@ def resample_power_to_1hz(
     return series.to_numpy(dtype=float)
 
 
-def max_mean_power(power_1hz: np.ndarray, window_seconds: int) -> float | None:
-    """Highest average power over any contiguous window of length window_seconds."""
+def max_mean_power_window(
+    power_1hz: np.ndarray,
+    window_seconds: int,
+) -> tuple[float | None, int | None]:
+    """Highest average power over any contiguous window; returns (watts, start index)."""
     if window_seconds <= 0 or len(power_1hz) < window_seconds:
-        return None
+        return None, None
 
     arr = np.asarray(power_1hz, dtype=float)
     cumsum = np.concatenate(([0.0], np.cumsum(arr)))
     window_sums = cumsum[window_seconds:] - cumsum[:-window_seconds]
-    return float(window_sums.max() / window_seconds)
+    if window_sums.size == 0:
+        return None, None
+    idx = int(window_sums.argmax())
+    return float(window_sums[idx] / window_seconds), idx
+
+
+def max_mean_power(power_1hz: np.ndarray, window_seconds: int) -> float | None:
+    """Highest average power over any contiguous window of length window_seconds."""
+    watts, _ = max_mean_power_window(power_1hz, window_seconds)
+    return watts
+
+
+def normalized_power_1hz(power_1hz: np.ndarray) -> float | None:
+    """
+    Coggan normalized power for a 1 Hz segment.
+
+    Segments shorter than 30 s use average power (TrainingPeaks convention).
+    """
+    arr = np.asarray(power_1hz, dtype=float)
+    if arr.size == 0:
+        return None
+    if arr.size < 30:
+        return float(arr.mean())
+    cumsum = np.concatenate(([0.0], np.cumsum(arr)))
+    roll30 = (cumsum[30:] - cumsum[:-30]) / 30.0
+    if roll30.size == 0:
+        return float(arr.mean())
+    return float(np.mean(np.power(roll30, 4)) ** 0.25)
 
 
 def calculate_power_curve(
@@ -128,6 +158,23 @@ def calculate_power_curve(
         label: max_mean_power(power_1hz, seconds)
         for label, seconds in durations.items()
     }
+
+
+def calculate_power_curve_np(
+    power_1hz: np.ndarray,
+    durations: dict[str, int] | None = None,
+) -> dict[str, float | None]:
+    """NP (W) for the best peak-power window at each duration."""
+    durations = durations or POWER_CURVE_DURATIONS
+    np_curve: dict[str, float | None] = {}
+    for label, seconds in durations.items():
+        _, start = max_mean_power_window(power_1hz, seconds)
+        if start is None:
+            np_curve[label] = None
+            continue
+        segment = power_1hz[start : start + seconds]
+        np_curve[label] = normalized_power_1hz(segment)
+    return np_curve
 
 
 def categorize_power_skills(power_curve: dict[str, float | None]) -> dict[str, dict[str, float | None]]:
@@ -149,10 +196,12 @@ def build_power_profile(
     Returns JSON-serializable dict with power_curve, power_skills, and metadata.
     """
     curve = calculate_power_curve(power_1hz, durations=durations)
+    curve_np = calculate_power_curve_np(power_1hz, durations=durations)
     skills = categorize_power_skills(curve)
     valid = [v for v in curve.values() if v is not None]
     return {
         "power_curve": curve,
+        "power_curve_np": curve_np,
         "power_skills": skills,
         "metadata": {
             "sample_seconds": int(len(power_1hz)),

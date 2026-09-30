@@ -12,7 +12,8 @@ logger = logging.getLogger(__name__)
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _DEFAULT_TOKEN_DIR = _REPO_ROOT / ".garmin_tokens"
-_LOGIN_RETRIES = 5
+def _login_retries() -> int:
+    return max(1, int(os.getenv("GARMIN_LOGIN_RETRIES", "5")))
 _EXPECTED_GARMINCONNECT = "0.2.30"
 
 
@@ -99,19 +100,20 @@ def _rate_limited(exc: Exception) -> bool:
 
 def _login_with_retry(client: Garmin, *, tokenstore: str | None = None) -> None:
     last_exc: Exception | None = None
-    for attempt in range(_LOGIN_RETRIES):
+    retries = _login_retries()
+    for attempt in range(retries):
         try:
             client.login(tokenstore=tokenstore)
             return
         except Exception as exc:
             last_exc = exc
-            if not _rate_limited(exc) or attempt >= _LOGIN_RETRIES - 1:
+            if not _rate_limited(exc) or attempt >= retries - 1:
                 raise
             wait = min(300, 60 * (attempt + 1))
             logger.warning(
                 "Garmin login rate-limited; retry %s/%s in %ss",
                 attempt + 1,
-                _LOGIN_RETRIES - 1,
+                retries - 1,
                 wait,
             )
             time.sleep(wait)
