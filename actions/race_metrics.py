@@ -54,9 +54,10 @@ def _build_volume_row(
     distance_fmt: str,
     sessions_fmt: str,
     elevation_fmt: str,
+    duration_formatter=ut.format_duration,
 ) -> dict[str, str]:
     return {
-        "duration": ut.format_duration(rm.get(duration_key)),
+        "duration": duration_formatter(rm.get(duration_key)),
         "sessions": sessions_fmt.format(rm.get(sessions_key) or 0),
         "elevation": elevation_fmt.format(rm.get(elevation_key) or 0),
         "swim": distance_fmt.format(rm.get(swim_key) or 0),
@@ -121,6 +122,7 @@ def build_training_volume(rm: pd.Series) -> list[dict[str, Any]]:
                 distance_fmt="{:.1f} km",
                 sessions_fmt="{:.1f}",
                 elevation_fmt="{:.0f} m",
+                duration_formatter=ut.format_duration_no_days,
             ),
         },
         {
@@ -137,6 +139,7 @@ def build_training_volume(rm: pd.Series) -> list[dict[str, Any]]:
                 distance_fmt="{:.1f} km",
                 sessions_fmt="{:.1f}",
                 elevation_fmt="{:.0f} m",
+                duration_formatter=ut.format_duration_no_days,
             ),
         },
     ]
