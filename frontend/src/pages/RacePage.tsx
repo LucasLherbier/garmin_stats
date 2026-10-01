@@ -10,7 +10,7 @@ import { HrvRecoveryChart } from '../components/HrvRecoveryChart';
 import { VolumeChart } from '../components/VolumeChart';
 import { VolumeStackChart } from '../components/VolumeStackChart';
 import type { Granularity } from '../types';
-import { prepWeekNumber } from '../utils/prepWeek';
+import { completedPrepWeekCount } from '../utils/prepWeek';
 import { activityPath, racePath } from '../utils/paths';
 
 type RaceChartView = 'swimming' | 'cycling' | 'running' | 'volume';
@@ -116,11 +116,11 @@ export function RacePage() {
     if (!race?.start || !race?.end) {
       return 'Trainings Volume';
     }
-    const week = prepWeekNumber(race.start, race.end);
-    if (week == null) {
+    const finishedWeeks = completedPrepWeekCount(race.start, race.end);
+    if (finishedWeeks == null || finishedWeeks === 0) {
       return 'Trainings Volume';
     }
-    return `Trainings Volume — Week ${week}`;
+    return `Trainings Volume — Week ${finishedWeeks}`;
   }, [detail?.race]);
 
   useEffect(() => {
