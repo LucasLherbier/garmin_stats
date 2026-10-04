@@ -46,6 +46,7 @@ jobs:
         USER_EMAIL: ${{ secrets.USER_EMAIL }}
         USER_PASSWORD: ${{ secrets.USER_PASSWORD }}
         GARMINTOKENS: ${{ secrets.GARMINTOKENS }}
+        GH_SECRETS_PAT: ${{ secrets.GH_SECRETS_PAT }}
         GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         GEMINI_MODEL: ${{ secrets.GEMINI_MODEL }}
         PYTHONPATH: .

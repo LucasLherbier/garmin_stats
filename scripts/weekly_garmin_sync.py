@@ -20,6 +20,7 @@ load_dotenv(_ROOT / ".env")
 import utils.pipeline.garmin_cookies as garmin_cookies
 from utils.pipeline.daily_wellness.process import process_daily_wellness
 from utils.pipeline.extract_weekly_activities import process_date_range
+from utils.pipeline.garmintokens_persist import persist_refreshed_garmintokens
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
@@ -54,6 +55,12 @@ def main() -> int:
         logger.info("Daily wellness catch-up: nothing fetched.")
     else:
         logger.info("Daily wellness catch-up: upserted %s day(s).", len(wellness_df))
+
+    blob = garmin_cookies.export_token_blob(client)
+    if blob:
+        persist_refreshed_garmintokens(blob)
+    else:
+        logger.warning("Could not export Garmin tokens after sync; GARMINTOKENS not updated.")
 
     return 0
 
