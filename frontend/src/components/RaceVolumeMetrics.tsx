@@ -16,8 +16,8 @@ export interface RaceVolumeRow {
 
 const VOLUME_TAB_OPTIONS: Array<{ value: RaceVolumeKey; label: string }> = [
   { value: 'total', label: 'Total' },
-  { value: 'weekly', label: 'Weekly' },
-  { value: '8w', label: '8W' },
+  { value: 'weekly', label: 'AvgWeekly' },
+  { value: '8w', label: 'Avg8W' },
 ];
 
 interface RaceVolumeMetricsProps {

@@ -3,9 +3,9 @@
 import os
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 from api.routes import overview, race, races, report, sports, stats
 
@@ -49,7 +49,34 @@ def health():
     return {"status": "ok"}
 
 
-# Serve built React app in production (optional)
+# Serve built React app in production (optional). Explicit SPA fallback so deep links
+# like /race/<slug> return index.html (StaticFiles html=True alone missed some paths).
 _frontend_dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+
+
+def _register_frontend(dist: Path) -> None:
+    root = dist.resolve()
+    index = root / "index.html"
+    if not index.is_file():
+        return
+
+    @app.get("/", include_in_schema=False)
+    async def spa_index() -> FileResponse:
+        return FileResponse(index)
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def spa_fallback(full_path: str) -> FileResponse:
+        if full_path.startswith("api/") or full_path == "api":
+            raise HTTPException(status_code=404, detail="Not Found")
+        candidate = (root / full_path).resolve()
+        try:
+            candidate.relative_to(root)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail="Not Found") from exc
+        if candidate.is_file():
+            return FileResponse(candidate)
+        return FileResponse(index)
+
+
 if _frontend_dist.exists():
-    app.mount("/", StaticFiles(directory=str(_frontend_dist), html=True), name="frontend")
+    _register_frontend(_frontend_dist)
