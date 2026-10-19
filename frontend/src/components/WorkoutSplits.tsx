@@ -1,3 +1,5 @@
+import { formatDuration } from '../utils/format';
+
 export interface WorkoutLap {
   split?: number | string;
   distance_km?: number;
@@ -136,6 +138,82 @@ export function RunSplitsTable({ laps }: RunSplitsTableProps) {
                   </td>
                   <td>{elevTxt}</td>
                   <td>{hrTxt}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function cyclingLapPowerW(lap: Record<string, unknown>): number | null {
+  const np = lap.normalized_power_w ?? lap.avg_power_w;
+  const value = Number(np);
+  return Number.isFinite(value) ? value : null;
+}
+
+function lapDurationFromRecord(lap: Record<string, unknown>): number {
+  return Number(lap.time_s ?? lap.duration_s ?? 0);
+}
+
+interface BikeWorkoutSplitsTableProps {
+  laps: Record<string, unknown>[];
+}
+
+export function BikeWorkoutSplitsTable({ laps }: BikeWorkoutSplitsTableProps) {
+  if (!laps.length) return null;
+
+  const powerVals = laps.map(cyclingLapPowerW).filter((p): p is number => p != null);
+  const peak = powerVals.length ? Math.max(...powerVals) : null;
+
+  return (
+    <section className="section-card tone-bike splits-section">
+      <h3 className="section-title">Splits</h3>
+      <div className="splits-table-wrap">
+        <table className="splits-table bike-splits-table">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>NP</th>
+              <th aria-label="Intensity bar" />
+              <th>HR</th>
+            </tr>
+          </thead>
+          <tbody>
+            {laps.map((lap, i) => {
+              const durS = lapDurationFromRecord(lap);
+              const timeTxt = durS > 0 ? formatDuration(durS) : '—';
+              const npW = cyclingLapPowerW(lap);
+              const npTxt = npW != null ? String(Math.round(npW)) : '—';
+              const hr = Number(lap.avg_hr);
+              const hrTxt = Number.isFinite(hr) ? String(Math.round(hr)) : '—';
+
+              let barPct = 35;
+              let barColor = '#3f3f46';
+              if (npW != null && peak) {
+                const intensity = npW / peak;
+                barPct = Math.round(35 + 65 * Math.min(intensity, 1));
+                barColor = intensity >= 0.85 ? '#ff6b2c' : '#ff8f5c';
+              }
+
+              return (
+                <tr key={`${String(lap.split ?? i)}`}>
+                  <td className="split-time">{timeTxt}</td>
+                  <td className="split-pace">{npTxt}</td>
+                  <td className="split-bar-cell">
+                    <span className="split-bar-track">
+                      <span
+                        className="split-bar-fill"
+                        style={{
+                          width: `${barPct}%`,
+                          background: barColor,
+                        }}
+                      />
+                    </span>
+                  </td>
+                  <td className="split-hr">{hrTxt}</td>
                 </tr>
               );
             })}

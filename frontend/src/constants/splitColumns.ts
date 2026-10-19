@@ -1,0 +1,21 @@
+/** Garmin lap CSV columns shown in Split details (bike); keep in sync with report_html._SPLIT_TABLE_COLUMNS */
+export const SPLIT_DETAIL_COLUMNS = [
+  'Split',
+  'Distance',
+  'Time',
+  'Moving Time',
+  'Avg HR',
+  'Max HR',
+  'Avg Bike Cadence',
+  'Calories',
+  'Elevation Gain',
+  'Elev Loss',
+  'Avg Speed',
+  'Avg Temperature',
+  'Avg Power',
+  'Normalized Power',
+  'Avg Moving Speed',
+  'Max Bike Cadence',
+  'Max Power',
+  'Max Speed',
+] as const;

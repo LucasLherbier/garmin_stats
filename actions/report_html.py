@@ -24,7 +24,7 @@ from actions.report_charts import (
     svg_telemetry_stack,
 )
 from actions.cycling_splits import power_from_csv
-from actions.report_map import svg_route_map
+from actions.report_map import html_route_map_embed
 from utils.pipeline.workout_summaries.parse_laps import normalize_laps_from_csv
 from utils.pipeline.workout_summaries.parse_laps import format_duration, format_pace
 
@@ -201,6 +201,7 @@ body {
 .detail-splits-table { min-width: 640px; font-size: 11px; }
 .detail-splits-table th, .detail-splits-table td { white-space: nowrap; padding: 4px 6px; }
 .route-map { display: block; width: 100%; height: auto; }
+.route-map-img { display: block; width: 100%; height: auto; object-fit: cover; background: #12121a; }
 .list-block {
   margin: 0 16px 10px;
   padding: 14px 16px 4px;
@@ -343,17 +344,20 @@ _SPLIT_TABLE_COLUMNS = [
     "Distance",
     "Time",
     "Moving Time",
-    "Avg Pace",
-    "Avg Moving Pace",
     "Avg HR",
     "Max HR",
-    "Avg Power",
-    "Normalized Power",
-    "Avg Speed",
     "Avg Bike Cadence",
+    "Calories",
     "Elevation Gain",
     "Elev Loss",
-    "Calories",
+    "Avg Speed",
+    "Avg Temperature",
+    "Avg Power",
+    "Normalized Power",
+    "Avg Moving Speed",
+    "Max Bike Cadence",
+    "Max Power",
+    "Max Speed",
 ]
 
 
@@ -383,7 +387,6 @@ def html_detail_splits_table(csv_df: pd.DataFrame | None) -> str:
         return ""
 
     columns = [col for col in _SPLIT_TABLE_COLUMNS if col in df.columns]
-    columns.extend(sorted(col for col in df.columns if col not in columns))
     header = "".join(f"<th>{_esc(col)}</th>" for col in columns)
     rows = []
     for _, row in df.iterrows():
@@ -786,9 +789,7 @@ def _intro_html(
     map_html = ""
     uses_leaflet = False
     if track_points and len(track_points) >= 2:
-        static_map = svg_route_map(track_points)
-        if static_map:
-            map_html = f'<div class="map-wrap">{static_map}</div>'
+        map_html = html_route_map_embed(track_points)
 
     intro = f"""
     <div class="intro-top"><h1>{_esc(title)}</h1></div>
