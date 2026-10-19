@@ -4,7 +4,11 @@ import { api } from '../api/client';
 import { PowerCurveChart } from '../components/PowerCurveChart';
 import { PowerProfileChart } from '../components/PowerProfileChart';
 import { RouteMap } from '../components/RouteMap';
-import { SplitsTable, SPLIT_DETAIL_COLUMNS } from '../components/SplitsTable';
+import {
+  SplitsTable,
+  BIKE_SPLIT_DETAIL_COLUMNS,
+  RUN_SPLIT_DETAIL_COLUMNS,
+} from '../components/SplitsTable';
 import {
   BikeWorkoutSplitsTable,
   RunSplitsTable,
@@ -338,8 +342,10 @@ export function ActivityDetailPage() {
               title={hasWorkoutLaps || (isCycling && bikeLaps.length) ? 'Split details' : 'Splits'}
               columns={
                 isCycling && (hasWorkoutLaps || bikeLaps.length)
-                  ? SPLIT_DETAIL_COLUMNS
-                  : undefined
+                  ? BIKE_SPLIT_DETAIL_COLUMNS
+                  : hasWorkoutLaps
+                    ? RUN_SPLIT_DETAIL_COLUMNS
+                    : undefined
               }
             />
           ) : null}

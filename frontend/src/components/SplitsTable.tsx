@@ -1,4 +1,10 @@
-import { SPLIT_DETAIL_COLUMNS } from '../constants/splitColumns';
+import {
+  BIKE_SPLIT_DETAIL_COLUMNS,
+  RUN_SPLIT_DETAIL_COLUMNS,
+  SPLIT_DETAIL_COLUMNS,
+} from '../constants/splitColumns';
+
+export { BIKE_SPLIT_DETAIL_COLUMNS, RUN_SPLIT_DETAIL_COLUMNS, SPLIT_DETAIL_COLUMNS };
 
 interface SplitsTableProps {
   rows: Record<string, unknown>[];
@@ -118,4 +124,3 @@ export function SplitsTable({ rows, title, columns: fixedColumns }: SplitsTableP
   );
 }
 
-export { SPLIT_DETAIL_COLUMNS };
