@@ -72,7 +72,7 @@ LEAFLET_HEAD = """
 
 
 def html_route_map(track_points: list[tuple[float, float]], height: int = 220, map_id: str = "route-map") -> str:
-    """Interactive map for in-app tabs (CARTO tiles — OSM blocks standalone HTML usage)."""
+    """Interactive map using Leaflet + OpenStreetMap tiles (no API key)."""
     if len(track_points) < 2:
         return ""
 
@@ -88,9 +88,9 @@ def html_route_map(track_points: list[tuple[float, float]], height: int = 220, m
     <script>
     (function() {{
       var map = L.map("{map_id}", {{scrollWheelZoom: false, zoomControl: false}});
-      L.tileLayer("https://{{s}}.basemaps.cartocdn.com/rastertiles/voyager/{{z}}/{{x}}/{{y}}{{r}}.png", {{
+      L.tileLayer("https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png", {{
         maxZoom: 19,
-        attribution: "&copy; <a href='https://carto.com/'>CARTO</a>"
+        attribution: "&copy; <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a>"
       }}).addTo(map);
       var line = L.polyline({coords_js}, {{color: "#fc5200", weight: 4, opacity: 1}}).addTo(map);
       map.fitBounds({bounds_js}, {{padding: [14, 14]}});

@@ -1,18 +1,24 @@
 """Garmin Analytics — FastAPI backend for the mobile web app."""
 
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
+
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
 from api.routes import overview, race, races, report, sports, stats
+from api.routes import sync as sync_routes
+from api.sync_scheduler import start_scheduler, stop_scheduler
 
 _DEFAULT_CORS_ORIGINS = (
     "http://localhost:5173,"
-    "http://127.0.0.1:5173,"
-    "https://garmin-stats-three.vercel.app"
+    "http://127.0.0.1:5173"
 )
 CORS_ALLOW_ORIGINS = [
     origin.strip()
@@ -20,17 +26,25 @@ CORS_ALLOW_ORIGINS = [
     if origin.strip()
 ]
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    start_scheduler()
+    yield
+    stop_scheduler()
+
+
 app = FastAPI(
     title="Garmin Analytics API",
     version="1.0.0",
     docs_url="/api/docs",
     openapi_url="/api/openapi.json",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ALLOW_ORIGINS,
-    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -42,6 +56,7 @@ app.include_router(races.router, prefix="/api")
 app.include_router(race.router, prefix="/api")
 app.include_router(stats.router, prefix="/api")
 app.include_router(report.router, prefix="/api")
+app.include_router(sync_routes.router, prefix="/api")
 
 
 @app.get("/api/health")

@@ -5,8 +5,6 @@ from __future__ import annotations
 import logging
 import os
 import subprocess
-import tempfile
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -43,17 +41,7 @@ def persist_refreshed_garmintokens(blob: str) -> None:
         logger.warning("GITHUB_REPOSITORY is missing; cannot persist GARMINTOKENS.")
         return
 
-    path: str | None = None
     try:
-        with tempfile.NamedTemporaryFile(
-            mode="w",
-            encoding="utf-8",
-            delete=False,
-            suffix=".json",
-        ) as handle:
-            handle.write(blob)
-            path = handle.name
-
         env = os.environ.copy()
         env["GH_TOKEN"] = pat
         result = subprocess.run(
@@ -64,9 +52,8 @@ def persist_refreshed_garmintokens(blob: str) -> None:
                 "GARMINTOKENS",
                 "--repo",
                 repo,
-                "--body-file",
-                path,
             ],
+            input=blob,
             check=False,
             capture_output=True,
             text=True,
@@ -81,6 +68,3 @@ def persist_refreshed_garmintokens(blob: str) -> None:
         logger.error("gh CLI not found on runner; cannot persist GARMINTOKENS.")
     except OSError as exc:
         logger.error("Could not persist GARMINTOKENS: %s", exc)
-    finally:
-        if path:
-            Path(path).unlink(missing_ok=True)

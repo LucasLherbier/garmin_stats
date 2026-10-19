@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import subprocess
 import sys
 from datetime import datetime, timedelta
@@ -26,26 +27,36 @@ logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description="Weekly Garmin sync with one login session.")
-    parser.add_argument("--start_date", required=True, help="Activity extract start (YYYY-MM-DD).")
-    args = parser.parse_args()
+def run_weekly_sync(
+    start_date: str, token_blob: str | None = None
+) -> tuple[int, str | None]:
+    """Run the full weekly sync (activities, summaries, daily wellness).
 
-    client = garmin_cookies.main()
+    token_blob: explicit DI token blob (in-app vault path). When None, falls
+    back to garmin_cookies.main() (env-based, CI path).
+    Returns (exit_code, refreshed_token_blob or None).
+    """
+    if token_blob:
+        client = garmin_cookies.login_with_blob(token_blob)
+    else:
+        client = garmin_cookies.main()
     if not client:
         logger.error("Failed to connect to Garmin Connect.")
-        return 1
+        return 1, None
 
-    process_date_range(args.start_date, client=client)
+    process_date_range(start_date, client=client)
 
     summaries_cmd = [
         sys.executable,
         str(_ROOT / "scripts" / "backfill_workout_summaries.py"),
         "--start_date",
-        args.start_date,
+        start_date,
     ]
     logger.info("Running: %s", " ".join(summaries_cmd))
-    subprocess.run(summaries_cmd, check=True, cwd=_ROOT)
+    child_env = os.environ.copy()
+    child_env.setdefault("OPENBLAS_NUM_THREADS", "1")
+    child_env.setdefault("OMP_NUM_THREADS", "1")
+    subprocess.run(summaries_cmd, check=True, cwd=_ROOT, env=child_env)
 
     yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
     last_week = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
@@ -54,15 +65,23 @@ def main() -> int:
     if wellness_df.empty:
         logger.info("Daily wellness catch-up: nothing fetched.")
     else:
-        logger.info("Daily wellness catch-up: upserted %s day(s).", len(wellness_df))
+        logger.info("Daily wellness catch-up: fetched %s day(s) (see logs for BigQuery upsert).", len(wellness_df))
 
-    blob = garmin_cookies.export_token_blob(client)
-    if blob:
-        persist_refreshed_garmintokens(blob)
-    else:
-        logger.warning("Could not export Garmin tokens after sync; GARMINTOKENS not updated.")
+    refreshed = garmin_cookies.export_token_blob(client)
+    if not refreshed:
+        logger.warning("Could not export Garmin tokens after sync.")
+    return 0, refreshed
 
-    return 0
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Weekly Garmin sync with one login session.")
+    parser.add_argument("--start_date", required=True, help="Activity extract start (YYYY-MM-DD).")
+    args = parser.parse_args()
+
+    code, refreshed = run_weekly_sync(args.start_date)
+    if code == 0 and refreshed:
+        persist_refreshed_garmintokens(refreshed)
+    return code
 
 
 if __name__ == "__main__":

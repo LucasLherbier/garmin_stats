@@ -16,3 +16,5 @@ google-cloud-bigquery-storage
 protobuf>=4.25.3
 google-genai>=1.0.0
 fitparse>=1.2.0
+APScheduler>=3.10.0
+cryptography>=41.0.0

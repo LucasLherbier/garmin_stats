@@ -31,7 +31,7 @@ REPORT_SHARE_EXPIRY_DAYS = int(os.getenv("REPORT_SHARE_EXPIRY_DAYS", "7"))
 GCS_SIGNED_URL_MAX_DAYS = 7
 REPORT_PUBLIC_BASE_URL = os.getenv(
     "REPORT_PUBLIC_BASE_URL",
-    "https://garmin-stats-three.vercel.app/r",
+    "https://garmin-stats.onrender.com/r",
 ).rstrip("/")
 GCP_PROJECT_ID = os.getenv('GCP_PROJECT_ID', '').strip('"').strip("'") or None
 GCP_DATASET_ID = os.getenv('GCP_DATASET_ID', 'garmin_stats').strip('"').strip("'")
@@ -103,6 +103,39 @@ def initialize_clients():
 
 initialize_clients()
 
+_BQ_STAGING_DIR = _PROJECT_ROOT / ".bq_staging"
+
+
+def _load_dataframe_to_bigquery(
+    df: pd.DataFrame,
+    table_id: str,
+    job_config: bigquery.LoadJobConfig,
+    *,
+    pre_load_hook=None,
+) -> None:
+    """Load via load_table_from_dataframe; TEMP redirected on Windows (8.3 path bug)."""
+    _BQ_STAGING_DIR.mkdir(parents=True, exist_ok=True)
+    staging = str(_BQ_STAGING_DIR.resolve())
+    saved = {
+        key: os.environ.get(key)
+        for key in ("TEMP", "TMP", "TMPDIR", "LOCALAPPDATA")
+    }
+    os.environ["TEMP"] = staging
+    os.environ["TMP"] = staging
+    os.environ["TMPDIR"] = staging
+    try:
+        if pre_load_hook is not None:
+            pre_load_hook()
+        job = bq_client.load_table_from_dataframe(df, table_id, job_config=job_config)
+        job.result()
+    finally:
+        for key, value in saved.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+
 def upload_to_bigquery(df, table_name):
     """Checks if any activityId exists. If yes, exits. If no, uploads everything."""
     if bq_client is None or df.empty:
@@ -150,10 +183,8 @@ def upload_to_bigquery(df, table_name):
             write_disposition="WRITE_APPEND",
             schema_update_options=[bigquery.SchemaUpdateOption.ALLOW_FIELD_ADDITION]
         )
-        job = bq_client.load_table_from_dataframe(df, table_id, job_config=job_config)
-        job.result()
+        _load_dataframe_to_bigquery(df, table_id, job_config)
 
-        
         logger.info(f"Successfully uploaded {len(df)} rows to {table_id}")
         return True
 
@@ -262,10 +293,15 @@ def merge_daily_wellness_to_bigquery(df: pd.DataFrame, table_name: str = "daily_
         delete_config = bigquery.QueryJobConfig(
             query_parameters=[bigquery.ArrayQueryParameter("days", "STRING", days)]
         )
-        try:
-            bq_client.get_table(table_id)
+
+        def _delete_existing_days() -> None:
             bq_client.query(delete_query, job_config=delete_config).result()
             logger.info("Removed %s existing daily_wellness row(s) before upsert.", len(days))
+
+        pre_load_hook = None
+        try:
+            bq_client.get_table(table_id)
+            pre_load_hook = _delete_existing_days
         except NotFound:
             logger.info("Table %s not found. It will be created on upload.", table_id)
 
@@ -274,8 +310,7 @@ def merge_daily_wellness_to_bigquery(df: pd.DataFrame, table_name: str = "daily_
             schema=DAILY_WELLNESS_SCHEMA,
             schema_update_options=[bigquery.SchemaUpdateOption.ALLOW_FIELD_ADDITION],
         )
-        job = bq_client.load_table_from_dataframe(upload_df, table_id, job_config=job_config)
-        job.result()
+        _load_dataframe_to_bigquery(upload_df, table_id, job_config, pre_load_hook=pre_load_hook)
         logger.info("Upserted %s row(s) into %s.", len(upload_df), table_id)
         return True
     except Exception as e:
