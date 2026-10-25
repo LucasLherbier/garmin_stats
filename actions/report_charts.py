@@ -143,7 +143,7 @@ def svg_run_splits_table(laps: list[dict], *, show_hr: bool = False, bar_color: 
     return f"""
     <table class="splits-table">
       <thead><tr>
-        <th>KM</th><th>PACE</th><th></th><th>ELEV</th>{hr_head}
+        <th>KM</th><th>Pace</th><th></th><th>Elev</th>{hr_head}
       </tr></thead>
       <tbody>{''.join(rows_html)}</tbody>
     </table>"""
@@ -794,9 +794,16 @@ def svg_telemetry_stack(
         if chart:
             charts.append(chart)
     elif sport == "running" and "Speed" in df.columns:
-        speed = pd.to_numeric(df["Speed"], errors="coerce")
-        pace = speed.where(speed > 0.1, np.nan).apply(lambda s: 1000.0 / float(s))
-        chart = svg_telemetry_line(times, pace, label="Pace", unit="s/km", color="#a78bfa", **line_kw)
+        speed_kmh = pd.to_numeric(df["Speed"], errors="coerce") * 3.6
+        chart = svg_telemetry_line(
+            times,
+            speed_kmh,
+            label="Speed",
+            unit="km/h",
+            color="#a78bfa",
+            smooth_window_s=smooth_s,
+            **line_kw,
+        )
         if chart:
             charts.append(chart)
 

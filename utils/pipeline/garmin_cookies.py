@@ -112,6 +112,36 @@ def _rate_limited(exc: Exception) -> bool:
     return "429" in text or "rate limit" in text
 
 
+def _auth_login_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    if any(code in text for code in ("401", "403")):
+        return True
+    if "unauthorized" in text or "invalid credentials" in text:
+        return True
+    if "invalid" in text and "token" in text:
+        return True
+    if "did not set di_token" in text:
+        return True
+    return False
+
+
+def _transient_login_error(exc: Exception) -> bool:
+    if _auth_login_error(exc):
+        return False
+    if _rate_limited(exc):
+        return True
+    text = str(exc).lower()
+    if "timeout" in text or "timed out" in text:
+        return True
+    if "connection" in text or "connecterror" in text:
+        return True
+    if any(code in text for code in ("500", "502", "503", "504")):
+        return True
+    if "failed to retrieve social profile" in text:
+        return True
+    return False
+
+
 def _is_di_token_blob(tokenstore: str) -> bool:
     return tokenstore.strip().startswith("{") and "di_token" in tokenstore
 
@@ -130,26 +160,26 @@ def _login_with_di_blob(client: Garmin, blob: str) -> None:
 
 
 def _login_with_retry(client: Garmin, *, tokenstore: str | None = None) -> None:
-    if tokenstore and _is_di_token_blob(tokenstore):
-        _login_with_di_blob(client, tokenstore)
-        return
-
     last_exc: Exception | None = None
     retries = _login_retries()
     for attempt in range(retries):
         try:
-            client.login(tokenstore=tokenstore)
+            if tokenstore and _is_di_token_blob(tokenstore):
+                _login_with_di_blob(client, tokenstore)
+            else:
+                client.login(tokenstore=tokenstore)
             return
         except Exception as exc:
             last_exc = exc
-            if not _rate_limited(exc) or attempt >= retries - 1:
+            if not _transient_login_error(exc) or attempt >= retries - 1:
                 raise
             wait = min(300, 60 * (attempt + 1))
             logger.warning(
-                "Garmin login rate-limited; retry %s/%s in %ss",
+                "Garmin login transient error; retry %s/%s in %ss: %s",
                 attempt + 1,
                 retries - 1,
                 wait,
+                exc,
             )
             time.sleep(wait)
     if last_exc:
@@ -244,3 +274,18 @@ def load_credentials():
 def main():
     email, password = load_credentials()
     return get_garmin_client(email, password)
+
+
+def login_with_blob(token_blob: str):
+    """Build a Garmin client from an explicit DI token blob.
+
+    Used by the in-app scheduler (token vault) instead of the GARMINTOKENS env.
+    Returns None on failure (never raises).
+    """
+    try:
+        client = Garmin("", "")
+        _login_with_retry(client, tokenstore=token_blob)
+        return client
+    except Exception as exc:
+        logger.error("Garmin login from token vault failed: %s", exc)
+        return None

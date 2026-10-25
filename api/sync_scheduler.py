@@ -61,6 +61,11 @@ def get_last_run_status() -> dict:
     return dict(_last_run)
 
 
+def get_sync_status() -> dict:
+    """Alias used by /api/sync/status."""
+    return get_last_run_status()
+
+
 def _execute_sync(manual: bool) -> dict:
     from utils.pipeline.run_garmin_sync import run_garmin_sync, sync_start_date
 

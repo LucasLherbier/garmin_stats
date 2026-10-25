@@ -24,7 +24,7 @@ from actions.report_charts import (
     svg_telemetry_stack,
 )
 from actions.cycling_splits import power_from_csv
-from actions.report_map import svg_route_map
+from actions.report_map import html_route_map_embed
 from utils.pipeline.workout_summaries.parse_laps import normalize_laps_from_csv
 from utils.pipeline.workout_summaries.parse_laps import format_duration, format_pace
 
@@ -201,6 +201,7 @@ body {
 .detail-splits-table { min-width: 640px; font-size: 11px; }
 .detail-splits-table th, .detail-splits-table td { white-space: nowrap; padding: 4px 6px; }
 .route-map { display: block; width: 100%; height: auto; }
+.route-map-img { display: block; width: 100%; height: auto; object-fit: cover; background: #12121a; }
 .list-block {
   margin: 0 16px 10px;
   padding: 14px 16px 4px;
@@ -338,23 +339,54 @@ def _avg_np_w_from_csv(csv_df: pd.DataFrame | None, sport: str) -> int | None:
     return int(round(avg_np)) if avg_np is not None else None
 
 
-_SPLIT_TABLE_COLUMNS = [
+_BIKE_SPLIT_DETAIL_COLUMNS = [
     "Split",
     "Distance",
     "Time",
     "Moving Time",
-    "Avg Pace",
-    "Avg Moving Pace",
     "Avg HR",
     "Max HR",
-    "Avg Power",
-    "Normalized Power",
-    "Avg Speed",
     "Avg Bike Cadence",
+    "Calories",
     "Elevation Gain",
     "Elev Loss",
-    "Calories",
+    "Avg Speed",
+    "Avg Temperature",
+    "Avg Power",
+    "Normalized Power",
+    "Avg Moving Speed",
+    "Max Bike Cadence",
+    "Max Power",
+    "Max Speed",
 ]
+
+_RUN_SPLIT_DETAIL_COLUMNS = [
+    "Split",
+    "Distance",
+    "Time",
+    "Moving Time",
+    "Avg Moving Pace",
+    "Avg Pace",
+    "Best Pace",
+    "Avg HR",
+    "Max HR",
+    "Avg Run Cadence",
+    "Calories",
+    "Elevation Gain",
+    "Elev Loss",
+    "Avg Speed",
+    "Avg Temperature",
+    "Max Run Cadence",
+    "Max Speed",
+]
+
+
+def _split_detail_columns(sport: str) -> list[str]:
+    if sport == "cycling":
+        return _BIKE_SPLIT_DETAIL_COLUMNS
+    if sport == "running":
+        return _RUN_SPLIT_DETAIL_COLUMNS
+    return _BIKE_SPLIT_DETAIL_COLUMNS
 
 
 def _format_split_cell(column: str, value) -> str:
@@ -370,8 +402,8 @@ def _format_split_cell(column: str, value) -> str:
     return text or "—"
 
 
-def html_detail_splits_table(csv_df: pd.DataFrame | None) -> str:
-    """Full Garmin lap CSV table (matches the app splits section)."""
+def html_detail_splits_table(csv_df: pd.DataFrame | None, sport: str = "cycling") -> str:
+    """Full Garmin lap CSV table (matches the app Split details section)."""
     if csv_df is None or csv_df.empty:
         return ""
 
@@ -382,8 +414,7 @@ def html_detail_splits_table(csv_df: pd.DataFrame | None) -> str:
     if df.empty:
         return ""
 
-    columns = [col for col in _SPLIT_TABLE_COLUMNS if col in df.columns]
-    columns.extend(sorted(col for col in df.columns if col not in columns))
+    columns = [col for col in _split_detail_columns(sport) if col in df.columns]
     header = "".join(f"<th>{_esc(col)}</th>" for col in columns)
     rows = []
     for _, row in df.iterrows():
@@ -418,11 +449,11 @@ def _activity_summary_metrics(
         cal = activity_row.get("calories")
         hr = activity_row.get("averageHR")
         return [
-            ("Distance", f"{dist_km:.1f} km" if dist_km else "—"),
-            ("Pace", pace or "—"),
-            ("Moving Time", format_duration(duration) if duration else "—"),
+            ("Distance", f"{dist_km:.2f} km" if dist_km is not None else "—"),
+            ("Avg Pace", pace or "—"),
+            ("Elapsed Time", format_duration(duration) if duration else "—"),
             ("Elevation Gain", f"{int(float(elev))} m" if elev is not None and not pd.isna(elev) else "—"),
-            ("Calories", f"{int(cal):,} cal" if cal is not None and not pd.isna(cal) else "—"),
+            ("Calories", f"{int(cal):,} Cal" if cal is not None and not pd.isna(cal) else "—"),
             ("Avg Heart Rate", f"{int(hr)} bpm" if hr is not None and not pd.isna(hr) else "—"),
         ]
 
@@ -696,7 +727,7 @@ def _run_body(laps: list[dict], hr_series, sport: str) -> str:
     chart = svg_pace_workout_chart(laps)
     if chart:
         parts.append(
-            f'{_section_open("Workout Analysis", sport)}'
+            f'{_section_open("Workout analysis", sport)}'
             f'<div class="chart-wrap">{chart}</div></div>'
         )
     return "".join(parts)
@@ -762,7 +793,8 @@ def _effect_label(activity_row) -> str | None:
     text = str(label).strip()
     if not text:
         return None
-    return text.replace("_", " ").title()
+    cleaned = text.replace("_", " ")
+    return " ".join(word.capitalize() for word in cleaned.split())
 
 
 def _intro_html(
@@ -774,6 +806,7 @@ def _intro_html(
     *,
     effect_label: str | None = None,
     structure_summary: str | None = None,
+    location_name: str | None = None,
 ) -> tuple[str, bool]:
     effect_html = ""
     if effect_label:
@@ -786,18 +819,19 @@ def _intro_html(
     map_html = ""
     uses_leaflet = False
     if track_points and len(track_points) >= 2:
-        static_map = svg_route_map(track_points)
-        if static_map:
-            map_html = f'<div class="map-wrap">{static_map}</div>'
+        map_html = html_route_map_embed(track_points)
+
+    location_text = (location_name or "").strip()
+    meta_line = " · ".join(part for part in (when, location_text) if part)
 
     intro = f"""
     <div class="intro-top"><h1>{_esc(title)}</h1></div>
-    {map_html}
     <div class="intro-meta">
-      <div class="when">{_esc(when)}</div>
       {effect_html}
+      <div class="when">{_esc(meta_line)}</div>
       {structure_html}
-    </div>"""
+    </div>
+    {map_html}"""
     return intro, uses_leaflet
 
 
@@ -843,7 +877,7 @@ def build_activity_report_html(
         avg_np_w=resolved_np,
     )
     splits_html = _splits_section(laps, sport)
-    detail_splits_html = html_detail_splits_table(csv_splits_df)
+    detail_splits_html = html_detail_splits_table(csv_splits_df, sport)
     if detail_splits_html:
         detail_splits_html = (
             f'{_section_open("Split details", sport)}{detail_splits_html}</div>'
@@ -852,6 +886,12 @@ def build_activity_report_html(
     # TODO: re-enable split list comparison blocks when list aggregates are wired up again.
     lists_html = _list_blocks_html(list_aggregates or [], laps, sport)
     lists_html = ""
+    location_raw = activity_row.get("locationName")
+    if location_raw is not None and not (isinstance(location_raw, float) and pd.isna(location_raw)):
+        location_name = str(location_raw).strip() or None
+    else:
+        location_name = None
+
     intro_html, uses_leaflet = _intro_html(
         activity_row,
         sport_label,
@@ -860,6 +900,7 @@ def build_activity_report_html(
         track_points,
         effect_label=effect_label,
         structure_summary=structure_summary,
+        location_name=location_name,
     )
     return f"""<!DOCTYPE html>
 <html lang="en">

@@ -222,7 +222,7 @@ def process_date_range(start_date, client=None):
             if wellness_df.empty:
                 logger.info("Daily wellness: nothing fetched for this week.")
             else:
-                logger.info("Daily wellness: upserted %s day(s).", len(wellness_df))
+                logger.info("Daily wellness: fetched %s day(s) (see logs for BigQuery upsert).", len(wellness_df))
         except Exception as e:
             logger.error(f"Error processing week ending {execution_date_str}: {e}")
 

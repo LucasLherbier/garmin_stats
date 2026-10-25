@@ -4,10 +4,27 @@ import { api } from '../api/client';
 import { PowerCurveChart } from '../components/PowerCurveChart';
 import { PowerProfileChart } from '../components/PowerProfileChart';
 import { RouteMap } from '../components/RouteMap';
-import { SplitsTable } from '../components/SplitsTable';
-import { RunSplitsTable, WorkoutPaceChart, type WorkoutLap } from '../components/WorkoutSplits';
+import {
+  SplitsTable,
+  BIKE_SPLIT_DETAIL_COLUMNS,
+  RUN_SPLIT_DETAIL_COLUMNS,
+} from '../components/SplitsTable';
+import {
+  BikeWorkoutSplitsTable,
+  RunSplitsTable,
+  WorkoutPaceChart,
+  type WorkoutLap,
+} from '../components/WorkoutSplits';
+import { HeartRateZones } from '../components/HeartRateZones';
 import { TelemetryChart } from '../components/TelemetryChart';
+import { TelemetryStackCharts } from '../components/TelemetryStackCharts';
 import { formatActivityWhen } from '../utils/format';
+
+function formatTrainingEffect(raw: unknown): string | null {
+  const text = String(raw ?? '').trim();
+  if (!text) return null;
+  return text.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
 
 function DetailMetric({ label, value }: { label: string; value: string }) {
   return (
@@ -65,6 +82,7 @@ export function ActivityDetailPage() {
   const when = formatActivityWhen(activity?.startTimeLocal ?? activity?.Day, activity?.Day);
   const locationName = String(activity?.locationName ?? '').trim();
   const isCycling = detail?.sport === 'cycling';
+  const bikeLaps = (detail?.laps ?? []) as Record<string, unknown>[];
 
   function downloadShareHtml(html: string, id: string) {
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
@@ -139,6 +157,10 @@ export function ActivityDetailPage() {
           <h2 className="activity-detail-title">
             {String(activity.activityName ?? 'Activity')}
           </h2>
+          {(() => {
+            const effect = formatTrainingEffect(activity.trainingEffectLabel);
+            return effect ? <p className="activity-effect-label">{effect}</p> : null;
+          })()}
           <div className="activity-detail-meta-row">
             <div className="activity-detail-meta">{metaLine}</div>
             <button
@@ -235,10 +257,10 @@ export function ActivityDetailPage() {
                 value={`${Number(activity.averageSpeed ?? 0).toFixed(1)} km/h`}
               />
               <DetailMetric
-                label="Avg Heart Rate"
+                label="Calories"
                 value={
-                  activity.averageHR
-                    ? `${Math.round(Number(activity.averageHR))} bpm`
+                  activity.calories
+                    ? `${Math.round(Number(activity.calories)).toLocaleString()} Cal`
                     : '—'
                 }
               />
@@ -273,9 +295,11 @@ export function ActivityDetailPage() {
             </div>
           )}
 
-          {detail?.telemetry?.length ? (
-            <TelemetryChart rows={detail.telemetry} sport={detail.sport} />
-          ) : null}
+          <HeartRateZones
+            telemetry={detail?.telemetry}
+            laps={isCycling ? bikeLaps : laps}
+            sport={detail?.sport}
+          />
 
           {hasWorkoutLaps ? (
             <WorkoutPaceChart laps={laps} avgPaceLabel={activity.pace ? String(activity.pace) : undefined} />
@@ -296,10 +320,34 @@ export function ActivityDetailPage() {
             </>
           ) : null}
 
+          {detail?.telemetry?.length ? (
+            isCycling || detail.sport === 'running' ? (
+              <TelemetryStackCharts
+                rows={detail.telemetry}
+                sport={detail.sport}
+                avgNpW={detail.avg_np_w}
+              />
+            ) : (
+              <TelemetryChart rows={detail.telemetry} sport={detail.sport} />
+            )
+          ) : null}
+
+          {isCycling && bikeLaps.length ? <BikeWorkoutSplitsTable laps={bikeLaps} /> : null}
+
           {hasWorkoutLaps ? <RunSplitsTable laps={laps} /> : null}
 
           {detail?.splits?.length ? (
-            <SplitsTable rows={detail.splits} title={hasWorkoutLaps ? 'Split details' : 'Splits'} />
+            <SplitsTable
+              rows={detail.splits}
+              title={hasWorkoutLaps || (isCycling && bikeLaps.length) ? 'Split details' : 'Splits'}
+              columns={
+                isCycling && (hasWorkoutLaps || bikeLaps.length)
+                  ? BIKE_SPLIT_DETAIL_COLUMNS
+                  : hasWorkoutLaps
+                    ? RUN_SPLIT_DETAIL_COLUMNS
+                    : undefined
+              }
+            />
           ) : null}
 
           {!hasWorkoutLaps && !detail?.splits?.length && detail?.workout_laps?.length ? (

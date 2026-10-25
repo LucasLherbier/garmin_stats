@@ -11,6 +11,7 @@ __pycache__/
 *.ipynb
 credentials.json
 .garmin_tokens/
+.bq_staging/
 # Distribution / packaging
 .Python
 build/

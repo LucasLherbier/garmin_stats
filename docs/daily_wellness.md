@@ -43,7 +43,11 @@ python scripts/backfill_daily_wellness.py --since 2022-05-01 --until 2026-08-25
 - **Weekly GitHub Action** runs `backfill_daily_wellness.py` (last 7 days) after activity extract.
 - **Weekly extract** also upserts daily wellness for each processed Mon–Sun window.
 
-GitHub Actions needs **one secret only: `GARMINTOKENS`** (one line of JSON from `export_garmin_tokens.py`, starting with `{"di_token":`). CI does **not** use `USER_EMAIL` / `USER_PASSWORD` for login.
+GitHub Actions uses **`GARMINTOKENS`** (one line of JSON from `export_garmin_tokens.py`, starting with `{"di_token":`). CI does **not** use `USER_EMAIL` / `USER_PASSWORD` for login.
+
+After each successful weekly sync, CI **writes the refreshed token blob back** to `GARMINTOKENS` (needs **`GH_SECRETS_PAT`**: fine-grained PAT on this repo with **Actions secrets → Read and write**, or classic PAT with `repo` scope). That keeps the secret current when Garmin rotates access/refresh tokens during the run.
+
+**One-time bootstrap:** set both `GARMINTOKENS` and `GH_SECRETS_PAT`. Avoid re-pasting `GARMINTOKENS` from your laptop on a schedule — that can invalidate the CI session. Re-export locally only when OAuth is fully dead and CI cannot log in.
 
 **Option A** — local password login works:
 
@@ -60,7 +64,7 @@ python -m playwright install chromium
 python scripts/garmin_browser_auth.py
 ```
 
-Paste the printed line into **Settings → Secrets → Actions → GARMINTOKENS**, then re-run **Weekly Garmin Sync**. Re-export when tokens expire.
+Paste the printed line into **Settings → Secrets → Actions → GARMINTOKENS**, add **GH_SECRETS_PAT**, then re-run **Weekly Garmin Sync**.
 
 ## Example query
 

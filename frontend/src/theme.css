@@ -1988,6 +1988,136 @@ a {
   letter-spacing: -0.02em;
 }
 
+.activity-effect-label {
+  margin: 0 0 6px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #a78bfa;
+}
+
+.hr-zones-bar {
+  display: flex;
+  height: 56px;
+  border-radius: 8px;
+  overflow: hidden;
+  gap: 0;
+}
+
+.hr-zones-segment {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 4px;
+  padding-bottom: 4px;
+  gap: 2px;
+}
+
+.hr-zones-zone {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: #a1a1aa;
+}
+
+.hr-zones-pct {
+  font-size: 0.56rem;
+  color: #71717a;
+}
+
+.telemetry-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.telemetry-chart-title {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #71717a;
+  margin-bottom: 4px;
+  letter-spacing: 0.02em;
+}
+
+.telemetry-chart-sub {
+  font-weight: 400;
+  color: #71717a;
+}
+
+.splits-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.81rem;
+}
+
+.splits-table th {
+  color: #71717a;
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 4px 8px 2px;
+  text-align: left;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.splits-table td {
+  padding: 3px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  vertical-align: middle;
+  line-height: 1.2;
+  color: #a1a1aa;
+}
+
+.bike-splits-table .split-time {
+  color: #a1a1aa;
+  white-space: nowrap;
+  font-size: 0.75rem;
+  width: 44px;
+}
+
+.bike-splits-table .split-pace {
+  font-weight: 600;
+  color: #f5f5f7;
+  width: 36px;
+}
+
+.bike-splits-table .split-hr {
+  text-align: right;
+  width: 32px;
+}
+
+.split-bar-cell {
+  width: 40%;
+  min-width: 80px;
+}
+
+.split-bar-track {
+  display: block;
+  width: 100%;
+}
+
+.split-bar-fill {
+  display: block;
+  height: 14px;
+  border-radius: 2px;
+  max-width: 100%;
+}
+
+.splits-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.detail-splits-table {
+  min-width: 640px;
+  font-size: 0.68rem;
+}
+
+.detail-splits-table th,
+.detail-splits-table td {
+  white-space: nowrap;
+  padding: 4px 6px;
+}
+
 .activity-detail-meta {
   font-size: 0.72rem;
   color: var(--text-muted);

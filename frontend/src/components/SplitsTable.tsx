@@ -1,6 +1,16 @@
+import {
+  BIKE_SPLIT_DETAIL_COLUMNS,
+  RUN_SPLIT_DETAIL_COLUMNS,
+  SPLIT_DETAIL_COLUMNS,
+} from '../constants/splitColumns';
+
+export { BIKE_SPLIT_DETAIL_COLUMNS, RUN_SPLIT_DETAIL_COLUMNS, SPLIT_DETAIL_COLUMNS };
+
 interface SplitsTableProps {
   rows: Record<string, unknown>[];
   title?: string;
+  /** When set, only these columns are shown (in order). */
+  columns?: readonly string[];
 }
 
 const PREFERRED_COLUMNS = [
@@ -28,9 +38,12 @@ const PREFERRED_COLUMNS = [
   'Normalized Power',
 ];
 
-function columnOrder(columns: string[]): string[] {
-  const preferred = PREFERRED_COLUMNS.filter((c) => columns.includes(c));
-  const rest = columns.filter((c) => !preferred.includes(c)).sort();
+function columnOrder(allKeys: string[], fixed?: readonly string[]): string[] {
+  if (fixed?.length) {
+    return fixed.filter((col) => allKeys.includes(col));
+  }
+  const preferred = PREFERRED_COLUMNS.filter((c) => allKeys.includes(c));
+  const rest = allKeys.filter((c) => !preferred.includes(c)).sort();
   return [...preferred, ...rest];
 }
 
@@ -65,18 +78,30 @@ function formatSplitCell(column: string, value: unknown): string {
   return String(value);
 }
 
-export function SplitsTable({ rows, title }: SplitsTableProps) {
-  if (!rows.length) return null;
+function filterSplitRows(rows: Record<string, unknown>[]): Record<string, unknown>[] {
+  return rows.filter((row) => {
+    const split = String(row.Split ?? '').trim().toLowerCase();
+    return split && split !== 'summary' && split !== 'total';
+  });
+}
 
-  const columns = columnOrder([
-    ...new Set(rows.flatMap((row) => Object.keys(row).filter((k) => !k.startsWith('_')))),
-  ]);
+export function SplitsTable({ rows, title, columns: fixedColumns }: SplitsTableProps) {
+  const filtered = filterSplitRows(rows);
+  if (!filtered.length) return null;
+
+  const allKeys = [
+    ...new Set(filtered.flatMap((row) => Object.keys(row).filter((k) => !k.startsWith('_')))),
+  ];
+  const columns = columnOrder(allKeys, fixedColumns);
+  if (!columns.length) return null;
+
+  const isDetail = fixedColumns != null;
 
   return (
-    <section className="section-card splits-section">
+    <section className={`section-card splits-section ${isDetail ? 'splits-section--detail' : ''}`.trim()}>
       {title ? <h3 className="section-title">{title}</h3> : null}
       <div className="splits-table-wrap">
-        <table className="splits-table">
+        <table className={`splits-table ${isDetail ? 'detail-splits-table' : ''}`.trim()}>
           <thead>
             <tr>
               {columns.map((col) => (
@@ -85,7 +110,7 @@ export function SplitsTable({ rows, title }: SplitsTableProps) {
             </tr>
           </thead>
           <tbody>
-            {rows.map((row, i) => (
+            {filtered.map((row, i) => (
               <tr key={i}>
                 {columns.map((col) => (
                   <td key={col}>{formatSplitCell(col, row[col])}</td>
@@ -98,3 +123,4 @@ export function SplitsTable({ rows, title }: SplitsTableProps) {
     </section>
   );
 }
+
