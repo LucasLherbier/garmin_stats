@@ -18,7 +18,7 @@ from actions.report_assets import load_report_assets
 from actions.report_html import build_activity_report_html, build_list_aggregates
 from api.serializers import df_to_records, record_from_series
 from utils import sql_queries as sql
-from utils.github_actions import trigger_weekly_sync
+from api.sync_scheduler import get_last_run_status, trigger_manual_sync
 from utils.utils_gcp import (
     publish_report_html,
     query_bigquery_live,
@@ -56,11 +56,12 @@ def _verify_sync_password(password: str) -> None:
 @router.post("/sync")
 def trigger_sync(body: SyncRequest):
     _verify_sync_password(body.password)
-    result = trigger_weekly_sync()
+    result = trigger_manual_sync()
+    ok = result.get("status") in ("started", "success")
     return {
-        "ok": result.ok,
-        "message": result.message,
-        "workflow_url": result.workflow_url,
+        "ok": ok,
+        "message": result.get("detail") or result.get("status"),
+        "last_run": get_last_run_status(),
     }
 
 

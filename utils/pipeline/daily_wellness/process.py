@@ -15,6 +15,7 @@ from utils.pipeline.daily_wellness.extract import (
     fetch_day_wellness,
     iter_date_chunks,
 )
+from utils.pipeline.garmin_client import is_personal_client
 from utils.utils_gcp import bq_client, merge_daily_wellness_to_bigquery
 
 logger = logging.getLogger(__name__)
@@ -140,33 +141,51 @@ def build_daily_wellness_rows(
     """Fetch Garmin wellness + join activity rollups for each day in range."""
     rollups = fetch_activity_rollups(since, until)
     existing = fetch_existing_days(since, until) if skip_existing else set()
-    prefetched = _build_prefetched(client, since, until)
-
-    rows: list[dict] = []
     days = [day for day in iter_days(since, until) if day not in existing]
     if existing:
         logger.info("Skipping %s day(s) already in daily_wellness.", len(existing))
-    logger.info("Fetching %s day(s) from Garmin (3 calls/day: sleep, HRV, stats)...", len(days))
 
-    for index, day in enumerate(days, start=1):
-        row = fetch_day_wellness(
-            client,
-            day,
-            prefetched=prefetched,
-            request_delay_sec=request_delay_sec,
-            include_stress=include_stress,
+    rows: list[dict] = []
+
+    if is_personal_client(client):
+        from utils.pipeline.daily_wellness.personal_fetch import fetch_wellness_by_day
+
+        logger.info(
+            "Fetching wellness via Personal API (%s → %s, %s day(s))...",
+            since,
+            until,
+            len(days),
         )
-        rollup = rollups.get(day, {})
-        row.update(rollup)
-
-        if not row.get("total_calories") and row.get("daily_calories"):
-            row["total_calories"] = row["daily_calories"]
-
-        row["extracted_at"] = pd.Timestamp.utcnow().isoformat()
-        rows.append(row)
-
-        if index % 25 == 0 or index == len(days):
-            logger.info("Progress: %s/%s days", index, len(days))
+        by_day = fetch_wellness_by_day(client, since, until)
+        for day in days:
+            row = dict(by_day.get(day, {"day": day, "extract_status": "no_data"}))
+            row.update(rollups.get(day, {}))
+            if not row.get("total_calories") and row.get("daily_calories"):
+                row["total_calories"] = row["daily_calories"]
+            row["extracted_at"] = pd.Timestamp.utcnow().isoformat()
+            rows.append(row)
+    else:
+        # LEGACY: garminconnect — per-day sleep / HRV / stats (+ bulk BB & RHR).
+        prefetched = _build_prefetched(client, since, until)
+        logger.info(
+            "Fetching %s day(s) from Garmin legacy (3 calls/day: sleep, HRV, stats)...",
+            len(days),
+        )
+        for index, day in enumerate(days, start=1):
+            row = fetch_day_wellness(
+                client,
+                day,
+                prefetched=prefetched,
+                request_delay_sec=request_delay_sec,
+                include_stress=include_stress,
+            )
+            row.update(rollups.get(day, {}))
+            if not row.get("total_calories") and row.get("daily_calories"):
+                row["total_calories"] = row["daily_calories"]
+            row["extracted_at"] = pd.Timestamp.utcnow().isoformat()
+            rows.append(row)
+            if index % 25 == 0 or index == len(days):
+                logger.info("Progress: %s/%s days", index, len(days))
 
     if not rows:
         return pd.DataFrame()

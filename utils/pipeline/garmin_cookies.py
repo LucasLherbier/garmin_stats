@@ -1,3 +1,9 @@
+"""LEGACY Garmin Connect client (garminconnect + GARMINTOKENS / password).
+
+Used when GARMIN_SOURCE=legacy. Default is the official Personal API
+(`garmin_client.get_garmin_client` + GARMIN_PERSONAL_API_KEY).
+"""
+
 import logging
 import os
 import time

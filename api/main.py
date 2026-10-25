@@ -1,6 +1,7 @@
 """Garmin Analytics — FastAPI backend for the mobile web app."""
 
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -20,11 +21,21 @@ CORS_ALLOW_ORIGINS = [
     if origin.strip()
 ]
 
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    from api.sync_scheduler import start_scheduler, stop_scheduler
+
+    start_scheduler()
+    yield
+    stop_scheduler()
+
+
 app = FastAPI(
     title="Garmin Analytics API",
     version="1.0.0",
     docs_url="/api/docs",
     openapi_url="/api/openapi.json",
+    lifespan=lifespan,
 )
 
 app.add_middleware(

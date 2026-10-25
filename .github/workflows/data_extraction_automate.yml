@@ -1,9 +1,10 @@
 name: Weekly Garmin Sync
 
 on:
-  schedule:
-    # Runs at 02:00 UTC every Monday
-    - cron: '0 2 * * 1'
+  # In-app sync on API startup replaces this cron (see api/sync_scheduler.py).
+  # Re-enable if you run the API without GARMIN_SYNC_ON_STARTUP.
+  # schedule:
+  #   - cron: '0 2 * * 1'
   workflow_dispatch:
 
 jobs:
@@ -43,6 +44,8 @@ jobs:
         GCP_DATASET_ID: ${{ secrets.GCP_DATASET_ID }}
         GCP_BUCKET_NAME: ${{ secrets.GCP_BUCKET_NAME }}
         GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
+        GARMIN_PERSONAL_API_KEY: ${{ secrets.GARMIN_PERSONAL_API_KEY }}
+        GARMIN_SOURCE: personal_api
         USER_EMAIL: ${{ secrets.USER_EMAIL }}
         USER_PASSWORD: ${{ secrets.USER_PASSWORD }}
         GARMINTOKENS: ${{ secrets.GARMINTOKENS }}

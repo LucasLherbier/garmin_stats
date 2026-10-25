@@ -9,7 +9,8 @@ from utils.pipeline.daily_wellness.process import process_daily_wellness
 from datetime import datetime, timedelta
 import argparse
 from time import sleep
-import utils.pipeline.garmin_cookies as garmin_cookies
+from utils.pipeline.fit_laps_export import fit_bytes_to_connect_lap_csv
+from utils.pipeline.garmin_client import get_garmin_client, is_personal_client
 from utils.utils_gcp import (
     bucket, check_gcs_path_exists, read_csv_from_gcs, 
     upload_to_gcs, log_to_bigquery
@@ -63,26 +64,46 @@ def extract_and_process_activity(activity_id, client, base_path):
             "activityName": activity_details.get("activityName")
         })
 
-        # 2. Download and Upload Raw Formats (GPX, TCX, CSV)
-        # Mapping Garmin formats to GCS extensions and MIME types
-        formats_to_process = [
-            (client.ActivityDownloadFormat.GPX, ".gpx", 'application/gpx+xml'),
-            (client.ActivityDownloadFormat.TCX, ".tcx", 'application/vnd.garmin.tcx+xml'),
-            (client.ActivityDownloadFormat.CSV, ".csv", 'text/csv')
-        ]
-
-        for fmt, ext, ctype in formats_to_process:
+        if is_personal_client(client):
+            # Personal API: original FIT + lap CSV derived for workout_summaries.
             try:
-                # API Call to download the file
-                data = client.download_activity(activity_id, dl_fmt=fmt)
-                gcs_path = f"{base_path}/{activity_id}{ext}"
-                
-                # Unified upload and log
-                upload_to_gcs(data, gcs_path, activity_id, ctype)
-                
+                fit_bytes = client.download_activity(activity_id)
+                upload_to_gcs(
+                    fit_bytes,
+                    f"{base_path}/{activity_id}.fit",
+                    activity_id,
+                    "application/octet-stream",
+                )
+                lap_csv = fit_bytes_to_connect_lap_csv(
+                    fit_bytes, activity_type=activity_data.get("activityType")
+                )
+                if lap_csv is not None and not lap_csv.empty:
+                    upload_to_gcs(
+                        lap_csv,
+                        f"{base_path}/{activity_id}.csv",
+                        activity_id,
+                        "text/csv",
+                    )
             except Exception as e:
-                # Some activities (like Gym/Yoga) won't have GPX/TCX files
-                logger.warning(f"Format {ext} not available for activity {activity_id}: {e}")
+                logger.warning(
+                    "FIT/CSV export not available for activity %s: %s", activity_id, e
+                )
+        else:
+            # LEGACY: GPX, TCX, Connect CSV from garminconnect.
+            formats_to_process = [
+                (client.ActivityDownloadFormat.GPX, ".gpx", "application/gpx+xml"),
+                (client.ActivityDownloadFormat.TCX, ".tcx", "application/vnd.garmin.tcx+xml"),
+                (client.ActivityDownloadFormat.CSV, ".csv", "text/csv"),
+            ]
+            for fmt, ext, ctype in formats_to_process:
+                try:
+                    data = client.download_activity(activity_id, dl_fmt=fmt)
+                    gcs_path = f"{base_path}/{activity_id}{ext}"
+                    upload_to_gcs(data, gcs_path, activity_id, ctype)
+                except Exception as e:
+                    logger.warning(
+                        "Format %s not available for activity %s: %s", ext, activity_id, e
+                    )
 
         # 3. Upload Summary Data as a single CSV info file
         gcs_info_path = f"{base_path}/{activity_id}_information.csv"
@@ -155,10 +176,12 @@ def process_date_range(start_date, client=None):
     end_date = datetime.now()
 
     if client is None:
-        client = garmin_cookies.main()
-        logger.info(f"Client {client}")
+        client = get_garmin_client()
+        logger.info("Garmin client: %s", type(client).__name__)
         if not client:
-            logger.error("Failed to connect to Garmin Connect. Check your credentials.")
+            logger.error(
+                "Failed to connect to Garmin. Set GARMIN_PERSONAL_API_KEY or GARMIN_SOURCE=legacy."
+            )
             raise SystemExit(1)
     
     while start_date.weekday() != 0:
