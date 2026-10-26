@@ -9,6 +9,14 @@ import { VolumeChart } from '../components/VolumeChart';
 import type { Granularity, OverviewSport, TimeRange } from '../types';
 import { formatDelta, formatDistance, formatDuration, formatDurationDelta } from '../utils/format';
 import { toneFromSport } from '../utils/tones';
+import { useIsDesktop } from '../hooks/useMediaQuery';
+import { OverviewDesktop } from './OverviewDesktop';
+
+/** Home route: desktop composition on wide screens, mobile layout otherwise. */
+export function OverviewPage() {
+  const isDesktop = useIsDesktop();
+  return isDesktop ? <OverviewDesktop /> : <OverviewMobile />;
+}
 
 function currentYearMonth() {
   const now = new Date();
@@ -46,7 +54,7 @@ const PERIOD_LABELS: Record<string, string> = {
   last_all: 'YTD',
 };
 
-export function OverviewPage() {
+function OverviewMobile() {
   const [sport, setSport] = useState<OverviewSport>('duration');
   const [timeRange, setTimeRange] = useState<TimeRange>('4_units');
   const [granularity, setGranularity] = useState<Granularity>('week');

@@ -93,7 +93,16 @@ def initialize_clients():
 
         if gcs_client and GCP_BUCKET_NAME:
             bucket = gcs_client.bucket(GCP_BUCKET_NAME)
-        
+        elif gcs_client and not GCP_BUCKET_NAME:
+            logger.warning(
+                "GCS bucket not configured: set GCP_BUCKET_NAME (uploads and raw files will fail)."
+            )
+        elif GCP_BUCKET_NAME and not gcs_client:
+            logger.warning(
+                "GCS client not initialized: set GOOGLE_CREDENTIALS_JSON on Render "
+                "(credentials.json is not shipped in the Docker image)."
+            )
+
         if bq_client and not GCP_PROJECT_ID:
             GCP_PROJECT_ID = bq_client.project
 
@@ -102,6 +111,14 @@ def initialize_clients():
         # Keep clients as None to trigger warnings in UI
 
 initialize_clients()
+
+if bucket is None and GCP_BUCKET_NAME:
+    logger.warning(
+        "GCS bucket handle is None; sync uploads to gs://%s will fail until credentials are fixed.",
+        GCP_BUCKET_NAME,
+    )
+elif bucket is None and not GCP_BUCKET_NAME:
+    logger.warning("GCP_BUCKET_NAME is unset; GCS uploads are disabled.")
 
 _BQ_STAGING_DIR = _PROJECT_ROOT / ".bq_staging"
 
@@ -392,7 +409,7 @@ def _run_bigquery(query):
         return pd.DataFrame()
 
 
-@lru_cache(maxsize=64)
+@lru_cache(maxsize=512)
 def query_bigquery(query: str):
     """Execute a BigQuery query and return a pandas DataFrame (cached by query text)."""
     return _run_bigquery(query)

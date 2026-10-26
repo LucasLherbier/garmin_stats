@@ -810,7 +810,7 @@ def get_activity_calendar_month_query(year: int, month: int) -> str:
                 WHEN activityTypeGrouped = 'swimming' THEN 'swimming'
                 WHEN activityTypeGrouped = 'cycling' THEN 'cycling'
                 WHEN activityTypeGrouped = 'running' THEN 'running'
-                WHEN activityTypeGrouped = 'gym_fitness' THEN 'gym'
+                WHEN activityTypeGrouped IN ('gym_fitness', 'physical_reinforcement', 'musculation') THEN 'gym'
                 ELSE 'other'
             END AS sport,
             CASE

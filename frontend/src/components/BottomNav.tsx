@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom';
 
 /** Home=A Stats=C Swim=W2 Bike=B Run=R2 Prep=Z6 Results=B */
-const items = [
+export const NAV_ITEMS = [
   {
     to: '/',
     label: 'Dashboard',
@@ -87,7 +87,7 @@ const items = [
 export function BottomNav() {
   return (
     <nav className="bottom-nav" aria-label="Main navigation">
-      {items.map((item) => (
+      {NAV_ITEMS.map((item) => (
         <NavLink
           key={item.to}
           to={item.to}

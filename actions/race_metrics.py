@@ -11,14 +11,29 @@ from actions import utils as ut
 from api.serializers import safe_float, safe_str
 from utils.pipeline.preprocess_activities import TRAINING_RACE_PERIODS
 
+# Same buckets as Race prep → Gym tab (api/routes/race.py RACE_ACTIVITY_SPORTS).
+GYM_ACTIVITY_TYPES = frozenset({"musculation", "gym_fitness", "physical_reinforcement"})
+
 SPORT_COLORS = {
     "running": "#3b82f6",
     "cycling": "#10b981",
     "swimming": "#06b6d4",
+    "gym": "#f472b6",
     "walking": "#f59e0b",
     "hiking": "#8b5cf6",
     "strength_training": "#ec4899",
     "other": "#94a3b8",
+}
+
+VOLUME_SPORT_LABELS: dict[str, str] = {
+    "running": "Running",
+    "cycling": "Cycling",
+    "swimming": "Swimming",
+    "gym": "Gym & fitness",
+    "walking": "Walking",
+    "hiking": "Hiking",
+    "strength_training": "Strength",
+    "other": "Other",
 }
 
 RACE_SPORT_CHART_COLORS = {
@@ -255,11 +270,19 @@ def build_race_summary_payload(
 
 def volume_chart_payload(activity_duration_df: pd.DataFrame, granularity: str) -> dict[str, Any]:
     if activity_duration_df.empty:
-        return {"granularity": granularity, "rows": [], "totals": [], "sport_colors": SPORT_COLORS}
+        return {
+            "granularity": granularity,
+            "rows": [],
+            "totals": [],
+            "sport_colors": SPORT_COLORS,
+            "sport_labels": VOLUME_SPORT_LABELS,
+        }
 
     df = activity_duration_df.copy()
-    df["FormattedDuration"] = df["Duration"].apply(ut.format_duration_no_days)
     df["TimePeriod"] = df["TimePeriod"].astype(str).str[:10]
+    df.loc[df["activityTypeGrouped"].isin(GYM_ACTIVITY_TYPES), "activityTypeGrouped"] = "gym"
+    df = df.groupby(["TimePeriod", "activityTypeGrouped"], as_index=False)["Duration"].sum()
+    df["FormattedDuration"] = df["Duration"].apply(ut.format_duration_no_days)
 
     rows = []
     for _, row in df.iterrows():
@@ -299,6 +322,7 @@ def volume_chart_payload(activity_duration_df: pd.DataFrame, granularity: str) -
         "rows": rows,
         "totals": totals,
         "sport_colors": SPORT_COLORS,
+        "sport_labels": VOLUME_SPORT_LABELS,
         "y_ticks": [{"value": v, "label": ut.format_duration_no_days(v)} for v in tick_vals],
         "y_max": max_duration,
     }

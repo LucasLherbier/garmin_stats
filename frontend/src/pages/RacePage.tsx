@@ -310,6 +310,7 @@ export function RacePage() {
               rows={detail.training_load.rows}
               totals={detail.training_load.totals}
               sportColors={detail.training_load.sport_colors}
+              sportLabels={detail.training_load.sport_labels}
               yTicks={detail.training_load.y_ticks}
               yMax={detail.training_load.y_max}
               title={detail.training_load.title}

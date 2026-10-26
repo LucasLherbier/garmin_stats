@@ -24,6 +24,7 @@ interface VolumeStackChartProps {
   rows: VolumeStackRow[];
   totals: Array<{ time_period: string; formatted_total: string }>;
   sportColors: Record<string, string>;
+  sportLabels?: Record<string, string>;
   yTicks?: Array<{ value: number; label: string }>;
   yMax?: number;
   title?: string;
@@ -38,6 +39,7 @@ function safeDuration(value: unknown): number {
 export function VolumeStackChart({
   rows,
   sportColors,
+  sportLabels,
   yTicks,
   yMax,
   title,
@@ -77,13 +79,17 @@ export function VolumeStackChart({
 
   const formatDurationTick = (value: number) => tickLabels?.[value] ?? String(value);
 
+  const labelFor = (sport: string) => sportLabels?.[sport] ?? sport;
+
   const tooltipFormatter = (value: unknown, name: unknown, item: { payload?: Record<string, unknown> }) => {
     const sport = String(name ?? '');
     const formatted = item.payload?.[`${sport}__formatted`];
-    if (typeof formatted === 'string' && formatted) return [formatted, sport];
+    if (typeof formatted === 'string' && formatted) return [formatted, labelFor(sport)];
     const num = safeDuration(value);
-    return [formatDurationChart(num), sport];
+    return [formatDurationChart(num), labelFor(sport)];
   };
+
+  const legendFormatter = (value: string) => labelFor(value);
 
   const barGradId = 'stackBarPurple';
 
@@ -123,7 +129,7 @@ export function VolumeStackChart({
               width={52}
             />
             <Tooltip contentStyle={tooltipStyle} formatter={tooltipFormatter} />
-            <Legend wrapperStyle={{ fontSize: 10, color: CHART.tick }} />
+            <Legend wrapperStyle={{ fontSize: 10, color: CHART.tick }} formatter={legendFormatter} />
             <ReferenceLine
               x={averageTotal}
               stroke={CHART.tick}
@@ -173,7 +179,7 @@ export function VolumeStackChart({
               width={52}
             />
             <Tooltip contentStyle={tooltipStyle} formatter={tooltipFormatter} />
-            <Legend wrapperStyle={{ fontSize: 10, color: CHART.tick }} />
+            <Legend wrapperStyle={{ fontSize: 10, color: CHART.tick }} formatter={legendFormatter} />
             <ReferenceLine
               y={averageTotal}
               stroke={CHART.tick}

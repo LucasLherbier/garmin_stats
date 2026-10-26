@@ -1,0 +1,64 @@
+diff --git a/api/main.py b/api/main.py
+index a0e4761..03e50a3 100644
+--- a/api/main.py
++++ b/api/main.py
+@@ -49,6 +49,27 @@ app.add_middleware(
+     allow_headers=["*"],
+ )
+ 
++
++@app.middleware("http")
++async def api_cache_headers(request, call_next):
++    """Let the browser reuse data GETs for a few minutes.
++
++    Training data changes at most weekly (on sync), so a 5-minute browser
++    cache is safe and makes back/forward navigation and reloads instant.
++    Sync/status/download endpoints are excluded — they must stay live.
++    """
++    response = await call_next(request)
++    path = request.url.path
++    if (
++        request.method == "GET"
++        and path.startswith("/api/")
++        and not path.startswith(("/api/sync", "/api/health", "/api/report/download"))
++    ):
++        response.headers["Cache-Control"] = (
++            "private, max-age=300, stale-while-revalidate=600"
++        )
++    return response
++
+ app.include_router(overview.router, prefix="/api")
+ app.include_router(sports.router, prefix="/api")
+ app.include_router(races.router, prefix="/api")
+diff --git a/api/sync_scheduler.py b/api/sync_scheduler.py
+index 8284e06..6656231 100644
+--- a/api/sync_scheduler.py
++++ b/api/sync_scheduler.py
+@@ -86,6 +86,14 @@ def _execute_sync(manual: bool) -> dict:
+         finished = datetime.now(timezone.utc)
+         _last_run.update(status="success", finished_at=finished.isoformat(), detail="ok")
+         _write_last_success(finished)
++        # Fresh data just landed: drop cached BigQuery results so the next
++        # page loads rebuild from the new tables, not the pre-sync cache.
++        try:
++            from utils.utils_gcp import query_bigquery
++
++            query_bigquery.cache_clear()
++        except Exception:  # noqa: BLE001 - cache hygiene must never fail a sync
++            logger.debug("Could not clear the BigQuery cache after sync.", exc_info=True)
+         return {"status": "success", "detail": "ok"}
+     except Exception as exc:  # noqa: BLE001
+         logger.exception("Garmin sync failed")
+diff --git a/utils/utils_gcp.py b/utils/utils_gcp.py
+index e9f251a..58fb051 100644
+--- a/utils/utils_gcp.py
++++ b/utils/utils_gcp.py
+@@ -392,7 +392,7 @@ def _run_bigquery(query):
+         return pd.DataFrame()
+ 
+ 
+-@lru_cache(maxsize=64)
++@lru_cache(maxsize=512)
+ def query_bigquery(query: str):
+     """Execute a BigQuery query and return a pandas DataFrame (cached by query text)."""
+     return _run_bigquery(query)

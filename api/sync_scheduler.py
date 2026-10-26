@@ -86,6 +86,12 @@ def _execute_sync(manual: bool) -> dict:
         finished = datetime.now(timezone.utc)
         _last_run.update(status="success", finished_at=finished.isoformat(), detail="ok")
         _write_last_success(finished)
+        try:
+            from utils.utils_gcp import query_bigquery
+
+            query_bigquery.cache_clear()
+        except Exception:  # noqa: BLE001
+            logger.debug("Could not clear the BigQuery cache after sync.", exc_info=True)
         return {"status": "success", "detail": "ok"}
     except Exception as exc:  # noqa: BLE001
         logger.exception("Garmin sync failed")

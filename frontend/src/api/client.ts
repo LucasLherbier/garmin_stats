@@ -30,7 +30,40 @@ export function apiUrl(path: string, params?: Record<string, string | number | u
   return query ? `${url}?${query}` : url;
 }
 
+const GET_CACHE_TTL_MS = 5 * 60 * 1000;
+const responseCache = new Map<string, { expiresAt: number; data: unknown }>();
+const inflightRequests = new Map<string, Promise<unknown>>();
+
+export function clearApiCache(): void {
+  responseCache.clear();
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const method = (init?.method ?? 'GET').toUpperCase();
+  if (method !== 'GET') {
+    return requestUncached<T>(path, init);
+  }
+  const hit = responseCache.get(path);
+  if (hit && hit.expiresAt > Date.now()) {
+    return hit.data as T;
+  }
+  const pending = inflightRequests.get(path);
+  if (pending) {
+    return pending as Promise<T>;
+  }
+  const promise = requestUncached<T>(path, init)
+    .then((data) => {
+      responseCache.set(path, { expiresAt: Date.now() + GET_CACHE_TTL_MS, data });
+      return data;
+    })
+    .finally(() => {
+      inflightRequests.delete(path);
+    });
+  inflightRequests.set(path, promise as Promise<unknown>);
+  return promise;
+}
+
+async function requestUncached<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
     ...init,
@@ -196,6 +229,7 @@ export const api = {
           }>;
           totals: Array<{ time_period: string; total_duration: number; formatted_total: string }>;
           sport_colors: Record<string, string>;
+          sport_labels?: Record<string, string>;
           y_ticks: Array<{ value: number; label: string }>;
           y_max: number;
         };

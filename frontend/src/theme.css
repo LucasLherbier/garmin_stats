@@ -2389,3 +2389,236 @@ a {
     max-width: 430px;
   }
 }
+
+
+/* ============================================================
+   DESKTOP LAYOUT (>= 1024 px)
+   Additive only: mobile styles above are untouched.
+   - App shell becomes sidebar + content (BottomNav hidden,
+     SideNav shown — both are always in the DOM, CSS switches).
+   - Pages widen from 430 px to 1180 px.
+   - Home gets a 12-column grid composition (.home-grid).
+   ============================================================ */
+
+.side-nav {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  .app-shell {
+    display: grid;
+    grid-template-columns: 252px minmax(0, 1fr);
+    padding-bottom: 0;
+  }
+
+  .bottom-nav-wrap {
+    display: none;
+  }
+
+  /* --- Sidebar --- */
+  .side-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 30px;
+    position: sticky;
+    top: 0;
+    height: 100dvh;
+    padding: 26px 18px 20px;
+    border-right: 1px solid var(--border);
+    background:
+      linear-gradient(180deg, rgba(139, 92, 246, 0.08), rgba(139, 92, 246, 0.02) 42%, transparent 70%),
+      var(--bg-elevated);
+  }
+
+  .side-nav-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 2px 8px;
+  }
+
+  .side-nav-logo {
+    width: 38px;
+    height: 38px;
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    border-radius: 12px;
+    background: var(--accent-gradient);
+    color: #fff;
+    box-shadow: 0 6px 18px var(--accent-glow);
+  }
+
+  .side-nav-logo svg {
+    width: 22px;
+    height: 22px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .side-nav-title {
+    font-family: var(--font-display);
+    font-size: 1.05rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    line-height: 1.15;
+  }
+
+  .side-nav-sub {
+    color: var(--text-muted);
+    font-size: 0.76rem;
+  }
+
+  .side-nav-links {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .side-nav-link {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    border: 1px solid transparent;
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-weight: 550;
+    transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+  }
+
+  .side-nav-link:hover {
+    background: var(--bg-card-hover);
+    color: var(--text);
+  }
+
+  /* Same lime treatment as the mobile nav's active pill. */
+  .side-nav-link.active {
+    background: linear-gradient(135deg, #c4f542 0%, #9ae026 55%, #7bc816 100%);
+    color: #0a0a0a;
+    box-shadow:
+      0 0 0 1px rgba(255, 255, 255, 0.12) inset,
+      0 4px 16px rgba(154, 224, 38, 0.30);
+  }
+
+  .side-nav-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
+  }
+
+  .side-nav-icon svg {
+    width: 19px;
+    height: 19px;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 1.75;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .side-nav-footer {
+    margin-top: auto;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--bg-card);
+  }
+
+  .side-nav-footer-text {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.3;
+    min-width: 0;
+  }
+
+  .side-nav-footer-text strong {
+    font-size: 0.86rem;
+  }
+
+  .side-nav-footer-text span {
+    color: var(--text-muted);
+    font-size: 0.74rem;
+  }
+
+  /* --- Wide pages (all tabs) --- */
+  .page {
+    max-width: 1180px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 30px 36px 48px;
+  }
+
+  .page-header h1 {
+    font-size: 1.7rem;
+  }
+
+  /* --- Home desktop grid --- */
+  .home-grid {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: 20px;
+    align-items: start;
+  }
+
+  .home-grid > section {
+    margin-bottom: 0;
+  }
+
+  .home-span-5 {
+    grid-column: span 5;
+  }
+
+  .home-span-7 {
+    grid-column: span 7;
+  }
+
+  .home-span-12 {
+    grid-column: span 12;
+  }
+
+  .home-hero {
+    padding: 26px 28px;
+  }
+
+  .home-hero .hero-balance {
+    font-size: 3.3rem;
+  }
+
+  .home-hero .metric-grid {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
+  }
+
+  .explorer-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px 26px;
+    align-items: flex-end;
+    margin-bottom: 16px;
+  }
+
+  .explorer-control {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .explorer-control > span {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--text-muted);
+  }
+}

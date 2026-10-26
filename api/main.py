@@ -49,6 +49,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def api_cache_headers(request, call_next):
+    """Let the browser reuse data GETs for a few minutes."""
+    response = await call_next(request)
+    path = request.url.path
+    if (
+        request.method == "GET"
+        and path.startswith("/api/")
+        and not path.startswith(("/api/sync", "/api/health", "/api/report/download"))
+    ):
+        response.headers["Cache-Control"] = (
+            "private, max-age=300, stale-while-revalidate=600"
+        )
+    return response
+
+
 app.include_router(overview.router, prefix="/api")
 app.include_router(sports.router, prefix="/api")
 app.include_router(races.router, prefix="/api")

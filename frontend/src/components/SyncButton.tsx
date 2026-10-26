@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { api } from '../api/client';
+import { api, clearApiCache } from '../api/client';
 
 export function SyncButton() {
   const titleId = useId();
@@ -35,7 +35,10 @@ export function SyncButton() {
       const result = await api.report.sync(syncPassword);
       setSyncMessage(result.message);
       if (!result.ok) setSyncError(result.message);
-      else setSyncPassword('');
+      else {
+        setSyncPassword('');
+        clearApiCache();
+      }
     } catch (e) {
       setSyncError(e instanceof Error ? e.message : 'Sync failed');
     } finally {
