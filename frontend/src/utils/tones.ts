@@ -1,4 +1,4 @@
-export type Tone = 'swim' | 'bike' | 'run' | 'hero' | 'gold';
+export type Tone = 'swim' | 'bike' | 'run' | 'hike' | 'hero' | 'gold';
 
 const ICON_TONE: Record<string, Tone> = {
   swim: 'swim',

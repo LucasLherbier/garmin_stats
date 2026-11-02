@@ -1,5 +1,16 @@
 import os
+import sys
 import logging
+from pathlib import Path
+
+_ROOT = Path(__file__).resolve().parents[2]
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+
+from dotenv import load_dotenv
+
+load_dotenv(_ROOT / ".env")
+
 import pandas as pd
 import sqlite3
 from utils.pipeline.connect_to_garmin import connect_to_garmin
@@ -9,13 +20,19 @@ from utils.pipeline.daily_wellness.process import process_daily_wellness
 from datetime import datetime, timedelta
 import argparse
 from time import sleep
-from utils.pipeline.fit_laps_export import fit_bytes_to_connect_lap_csv
 from utils.pipeline.garmin_client import get_garmin_client, is_personal_client
+from utils.pipeline.activity_exports import (
+    activity_base_path,
+    download_activity_exports,
+    information_csv_path,
+    missing_export_extensions,
+    missing_personal_export_extensions,
+    upload_fit_derivatives,
+)
 from utils.utils_gcp import (
     bucket, check_gcs_path_exists, read_csv_from_gcs, 
     upload_to_gcs, log_to_bigquery
 )
-import sys
 import io
 
 # Configure logging
@@ -65,48 +82,28 @@ def extract_and_process_activity(activity_id, client, base_path):
         })
 
         if is_personal_client(client):
-            # Personal API: original FIT + lap CSV derived for workout_summaries.
             try:
                 fit_bytes = client.download_activity(activity_id)
-                upload_to_gcs(
+                upload_fit_derivatives(
                     fit_bytes,
-                    f"{base_path}/{activity_id}.fit",
                     activity_id,
-                    "application/octet-stream",
+                    base_path,
+                    activity_type=activity_data.get("activityType"),
                 )
-                lap_csv = fit_bytes_to_connect_lap_csv(
-                    fit_bytes, activity_type=activity_data.get("activityType")
-                )
-                if lap_csv is not None and not lap_csv.empty:
-                    upload_to_gcs(
-                        lap_csv,
-                        f"{base_path}/{activity_id}.csv",
-                        activity_id,
-                        "text/csv",
-                    )
             except Exception as e:
                 logger.warning(
-                    "FIT/CSV export not available for activity %s: %s", activity_id, e
+                    "FIT / derived exports failed for activity %s: %s", activity_id, e
                 )
         else:
-            # LEGACY: GPX, TCX, Connect CSV from garminconnect.
-            formats_to_process = [
-                (client.ActivityDownloadFormat.GPX, ".gpx", "application/gpx+xml"),
-                (client.ActivityDownloadFormat.TCX, ".tcx", "application/vnd.garmin.tcx+xml"),
-                (client.ActivityDownloadFormat.CSV, ".csv", "text/csv"),
-            ]
-            for fmt, ext, ctype in formats_to_process:
-                try:
-                    data = client.download_activity(activity_id, dl_fmt=fmt)
-                    gcs_path = f"{base_path}/{activity_id}{ext}"
-                    upload_to_gcs(data, gcs_path, activity_id, ctype)
-                except Exception as e:
-                    logger.warning(
-                        "Format %s not available for activity %s: %s", ext, activity_id, e
-                    )
+            download_activity_exports(
+                activity_id,
+                client,
+                base_path,
+                activity_type=activity_data.get("activityType"),
+            )
 
         # 3. Upload Summary Data as a single CSV info file
-        gcs_info_path = f"{base_path}/{activity_id}_information.csv"
+        gcs_info_path = information_csv_path(base_path, activity_id)
         df_info = pd.DataFrame([activity_data])
         upload_to_gcs(df_info, gcs_info_path, activity_id)
         
@@ -143,16 +140,34 @@ def extract_weekly_activities(client, last_week_date, execution_date):
             start_time = activity.get("startTimeLocal")
             activity_month = pd.to_datetime(start_time).strftime("%Y-%m")
             
-            # GCP Paths
-            base_path = f"data/raw/{activity_month}/{activity_id}"
-            gcs_info_path = f"{base_path}/{activity_id}_information.csv"
+            base_path = activity_base_path(activity_month, activity_id)
+            gcs_info_path = information_csv_path(base_path, activity_id)
+            if is_personal_client(client):
+                missing = missing_personal_export_extensions(base_path, activity_id)
+            else:
+                missing = missing_export_extensions(base_path, activity_id)
 
-            # Skip if file already exists in GCS
-            if check_gcs_path_exists(gcs_info_path):
-                logger.info(f"- {activity_id} already exists in GCS. Skipping.")
+            if check_gcs_path_exists(gcs_info_path) and not missing:
+                logger.info(f"- {activity_id} already complete in GCS. Skipping.")
                 df_cached = read_csv_from_gcs(gcs_info_path)
                 activities_data.extend(df_cached.to_dict('records'))
-            else: 
+            elif check_gcs_path_exists(gcs_info_path):
+                logger.info(
+                    f"- {activity_id} metadata exists; backfilling missing exports: {missing}"
+                )
+                df_cached = read_csv_from_gcs(gcs_info_path)
+                activity_type = None
+                if df_cached is not None and not df_cached.empty:
+                    activity_type = df_cached.iloc[0].get("activityType")
+                download_activity_exports(
+                    activity_id,
+                    client,
+                    base_path,
+                    only_extensions=missing,
+                    activity_type=activity_type,
+                )
+                activities_data.extend(df_cached.to_dict('records'))
+            else:
                 activity_info = extract_and_process_activity(activity_id, client, base_path)
                 activities_data.append(activity_info)
             

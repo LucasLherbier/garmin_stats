@@ -257,10 +257,10 @@ export function ActivityDetailPage() {
                 value={`${Number(activity.averageSpeed ?? 0).toFixed(1)} km/h`}
               />
               <DetailMetric
-                label="Calories"
+                label="Avg HR"
                 value={
-                  activity.calories
-                    ? `${Math.round(Number(activity.calories)).toLocaleString()} Cal`
+                  activity.averageHR != null && Number(activity.averageHR) > 0
+                    ? `${Math.round(Number(activity.averageHR))} bpm`
                     : '—'
                 }
               />

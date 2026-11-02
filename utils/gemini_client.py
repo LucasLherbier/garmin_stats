@@ -122,6 +122,7 @@ def generate_text(
     model: str | None = None,
     max_output_tokens: int = 1024,
     temperature: float | None = None,
+    response_mime_type: str | None = None,
 ) -> str:
     from google.genai import types
 
@@ -130,6 +131,8 @@ def generate_text(
         config_kwargs["system_instruction"] = system_instruction
     if temperature is not None:
         config_kwargs["temperature"] = temperature
+    if response_mime_type:
+        config_kwargs["response_mime_type"] = response_mime_type
 
     client = get_client()
     model_name = model or gemini_model()
@@ -178,6 +181,7 @@ def generate_text_with_fallbacks(
     system_instruction: str | None = None,
     max_output_tokens: int = 1024,
     temperature: float | None = None,
+    response_mime_type: str | None = None,
 ) -> tuple[str, str]:
     """Try models in order; return (text, model_used)."""
     last_error: Exception | None = None
@@ -189,6 +193,7 @@ def generate_text_with_fallbacks(
                 model=model,
                 max_output_tokens=max_output_tokens,
                 temperature=temperature,
+                response_mime_type=response_mime_type,
             )
             return text, model
         except Exception as exc:

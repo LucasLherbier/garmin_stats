@@ -13,9 +13,9 @@ import {
 
 import { CHART, formatChartValue, tooltipStyle } from '../chartTheme';
 import type { ChartPoint } from '../types';
-import { formatDuration, formatDurationChart } from '../utils/format';
+import { formatDurationChart } from '../utils/format';
 
-export type ChartColorTheme = 'purple' | 'orange';
+export type ChartColorTheme = 'purple' | 'orange' | 'green';
 
 interface VolumeChartProps {
   points: ChartPoint[];
@@ -41,6 +41,11 @@ const THEME_COLORS = {
     bright: CHART.accentBright,
     mid: CHART.accentMid,
     deep: CHART.accentDeep,
+  },
+  green: {
+    bright: '#4ade80',
+    mid: '#22c55e',
+    deep: '#15803d',
   },
 } as const;
 
@@ -130,12 +135,7 @@ export function VolumeChart({
         formatter={(v) => {
           const num = Number(v ?? 0);
           if (!Number.isFinite(num)) return ['—', yLabel];
-          return [
-            resolvedFormat === 'duration'
-              ? formatDuration(num)
-              : formatValue(num, resolvedFormat),
-            yLabel,
-          ];
+          return [formatValue(num, resolvedFormat), yLabel];
         }}
         labelFormatter={(label) => `${periodLabel} ${label}`}
       />
@@ -146,7 +146,7 @@ export function VolumeChart({
         strokeWidth={1.5}
         ifOverflow="extendDomain"
         label={{
-          value: formatValue(average, resolvedFormat),
+          value: `Avg: ${formatValue(average, resolvedFormat)}`,
           position: 'insideTopRight',
           fill: CHART.tick,
           fontSize: 10,

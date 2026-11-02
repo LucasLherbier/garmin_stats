@@ -347,7 +347,6 @@ _BIKE_SPLIT_DETAIL_COLUMNS = [
     "Avg HR",
     "Max HR",
     "Avg Bike Cadence",
-    "Calories",
     "Elevation Gain",
     "Elev Loss",
     "Avg Speed",
@@ -460,15 +459,15 @@ def _activity_summary_metrics(
     if sport == "cycling":
         dist_km = float(distance) if distance is not None and not pd.isna(distance) else None
         elev = activity_row.get("elevationGain")
-        cal = activity_row.get("calories")
         speed = activity_row.get("averageSpeed")
+        hr = activity_row.get("averageHR")
         return [
             ("Distance", f"{dist_km:.1f} km" if dist_km else "—"),
             ("Elevation Gain", f"{int(float(elev))} m" if elev is not None and not pd.isna(elev) else "—"),
             ("Moving Time", format_duration(duration) if duration else "—"),
             ("NP", f"{avg_np_w} W" if avg_np_w is not None else "—"),
             ("Avg Speed", f"{float(speed) * 3.6:.1f} km/h" if speed is not None and not pd.isna(speed) else "—"),
-            ("Calories", f"{int(cal):,} Cal" if cal is not None and not pd.isna(cal) else "—"),
+            ("Avg HR", f"{int(hr)} bpm" if hr is not None and not pd.isna(hr) else "—"),
         ]
 
     if sport == "swimming":

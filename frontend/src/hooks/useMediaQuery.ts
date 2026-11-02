@@ -20,6 +20,13 @@ export function useMediaQuery(query: string): boolean {
 /** Desktop shell breakpoint: sidebar + wide pages at >= 1024 px. */
 export const DESKTOP_QUERY = '(min-width: 1024px)';
 
+/** Home wide layout (stacked sections, full-width heatmap) at >= 768 px. */
+export const HOME_WIDE_QUERY = '(min-width: 768px)';
+
 export function useIsDesktop(): boolean {
   return useMediaQuery(DESKTOP_QUERY);
+}
+
+export function useIsHomeWide(): boolean {
+  return useMediaQuery(HOME_WIDE_QUERY);
 }

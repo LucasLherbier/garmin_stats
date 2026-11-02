@@ -35,7 +35,7 @@ def _sport_group(activity_type: str | None) -> str:
     key = (activity_type or "").lower()
     if "swim" in key:
         return "swimming"
-    if "cycle" in key or "bike" in key or "virtual_ride" in key:
+    if "cycling" in key or "cycle" in key or "bike" in key or "virtual_ride" in key:
         return "cycling"
     if "run" in key or "trail" in key:
         return "running"

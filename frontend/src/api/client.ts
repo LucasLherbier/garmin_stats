@@ -31,6 +31,14 @@ export function apiUrl(path: string, params?: Record<string, string | number | u
 }
 
 const GET_CACHE_TTL_MS = 5 * 60 * 1000;
+const GET_CACHE_OVERVIEW_TTL_MS = 30 * 60 * 1000;
+
+function getCacheTtlMs(path: string): number {
+  if (path.includes('/overview/home-ytd') || path.includes('/overview/year-compare')) {
+    return GET_CACHE_OVERVIEW_TTL_MS;
+  }
+  return GET_CACHE_TTL_MS;
+}
 const responseCache = new Map<string, { expiresAt: number; data: unknown }>();
 const inflightRequests = new Map<string, Promise<unknown>>();
 
@@ -53,7 +61,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
   const promise = requestUncached<T>(path, init)
     .then((data) => {
-      responseCache.set(path, { expiresAt: Date.now() + GET_CACHE_TTL_MS, data });
+      responseCache.set(path, { expiresAt: Date.now() + getCacheTtlMs(path), data });
       return data;
     })
     .finally(() => {
@@ -119,22 +127,36 @@ export const api = {
           slot: 'AM' | 'PM' | 'EV';
         }>;
       }>(apiUrl('/overview/activity-calendar', { year, month })),
+    homeYtd: () => request<import('../types').HomeYtdResponse>(apiUrl('/overview/home-ytd')),
+    yearCompare: (
+      sport: import('../types').OverviewSport,
+      years?: { compareYear?: number; baselineYear?: number },
+    ) =>
+      request<import('../types').YearCompareResponse>(
+        apiUrl('/overview/year-compare', {
+          sport,
+          compare_year: years?.compareYear,
+          baseline_year: years?.baselineYear,
+        }),
+      ),
+    historyVolume: (year: number, sport: import('../types').OverviewSport) =>
+      request<import('../types').HistoryVolumeResponse>(
+        apiUrl('/overview/history-volume', { year, sport }),
+      ),
   },
 
   sports: {
-    volumeSummary: (sport: string) =>
-      request<{ periods: Record<string, unknown>[] }>(apiUrl(`/sports/${sport}/volume-summary`)),
-    trends: (sport: string, timeRange: string) =>
-      request<{ points: import('../types').ChartPoint[] }>(
-        apiUrl(`/sports/${sport}/trends`, { timeRange }),
+    summary: (sport: string) =>
+      request<{ periods: import('../types').SportPeriodSummary[] }>(
+        apiUrl(`/sports/${sport}/summary`),
       ),
-    activities: (sport: string, timeRange: string, offset = 0, pageSize = 5) =>
+    activities: (sport: string, offset = 0, pageSize = 3) =>
       request<{
         activities: import('../types').ActivitySummary[];
         offset: number;
         page_size: number;
         has_more: boolean;
-      }>(apiUrl(`/sports/${sport}/activities`, { timeRange, offset, pageSize })),
+      }>(apiUrl(`/sports/${sport}/activities`, { offset, pageSize })),
     activityDetail: (activityId: number) =>
       request<{
         activity: Record<string, unknown>;

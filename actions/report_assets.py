@@ -6,6 +6,7 @@ from datetime import date
 
 import pandas as pd
 
+from actions.parse_fit import fit_track_points, parse_fit_to_dataframe
 from actions.parse_tcx_csv import parse_tcx_to_dataframe
 from actions.power_curve import power_profile_from_fit, power_profile_from_telemetry
 from actions.report_map import gpx_track_points
@@ -54,6 +55,35 @@ def load_report_assets(activity_id: int, start_time_local, sport: str):
                     power_profile = power_profile_from_fit(fit_content)
                 elif "Watts" in df_tcx.columns:
                     power_profile = power_profile_from_telemetry(df_tcx["Time"], df_tcx["Watts"])
+
+        if check_gcs_path_exists(fit_path):
+            fit_content = bucket.blob(fit_path).download_as_bytes()
+            if track_points is None:
+                fit_pts = fit_track_points(fit_content)
+                if fit_pts:
+                    track_points = fit_pts
+            if telemetry_df is None or telemetry_df.empty:
+                df_fit = parse_fit_to_dataframe(fit_content)
+                if not df_fit.empty:
+                    cols = [
+                        c
+                        for c in (
+                            "Time",
+                            "HeartRate",
+                            "Cadence",
+                            "Speed",
+                            "Watts",
+                            "Altitude",
+                            "Distance",
+                        )
+                        if c in df_fit.columns and df_fit[c].notna().any()
+                    ]
+                    if cols:
+                        telemetry_df = df_fit[cols].copy()
+            if sport == "cycling" and power_profile is None:
+                power_profile = power_profile_from_fit(fit_content)
+            if hr_series is None and telemetry_df is not None and "HeartRate" in telemetry_df.columns:
+                hr_series = telemetry_df["HeartRate"]
     except Exception:
         pass
 

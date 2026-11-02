@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { ActivityList } from '../components/ActivityList';
 import { LoadMoreButton } from '../components/LoadMoreButton';
@@ -6,9 +6,11 @@ import { PageHeader } from '../components/PageHeader';
 import { SegmentedControl } from '../components/SegmentedControl';
 import { SportSummaryMetrics } from '../components/SportSummaryMetrics';
 import { VolumeChart } from '../components/VolumeChart';
-import type { ActivitySummary, Sport } from '../types';
-import { SPORT_VOLUME_KEYS, volumeKeyToSummaryKey, volumeKeyToTimeRange } from '../utils/sportFilters';
+import type { ActivitySummary, Sport, SportPeriodSummary } from '../types';
+import { SPORT_VOLUME_KEYS } from '../utils/sportFilters';
 import { toneFromSport } from '../utils/tones';
+
+const ACTIVITIES_PAGE_SIZE = 3;
 
 interface SportPageProps {
   sport: Sport;
@@ -21,27 +23,19 @@ export function SportPage({ sport, title }: SportPageProps) {
   const [activitiesLoading, setActivitiesLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [volume, setVolume] = useState<Record<string, unknown>[]>([]);
-  const [trends, setTrends] = useState<Awaited<ReturnType<typeof api.sports.trends>> | null>(null);
+  const [periods, setPeriods] = useState<SportPeriodSummary[]>([]);
   const [activities, setActivities] = useState<ActivitySummary[]>([]);
   const [hasMore, setHasMore] = useState(false);
 
-  const timeRange = useMemo(() => volumeKeyToTimeRange(volumeKey), [volumeKey]);
-
+  // One request holds every period filter: switching filters does not refetch.
   useEffect(() => {
     let cancelled = false;
     async function load() {
       setLoading(true);
       setError(null);
       try {
-        const [v, t] = await Promise.all([
-          api.sports.volumeSummary(sport),
-          api.sports.trends(sport, timeRange),
-        ]);
-        if (!cancelled) {
-          setVolume(v.periods);
-          setTrends(t);
-        }
+        const result = await api.sports.summary(sport);
+        if (!cancelled) setPeriods(result.periods);
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load');
       } finally {
@@ -52,7 +46,7 @@ export function SportPage({ sport, title }: SportPageProps) {
     return () => {
       cancelled = true;
     };
-  }, [sport, timeRange]);
+  }, [sport]);
 
   const loadActivities = useCallback(
     async (offset: number, append: boolean) => {
@@ -62,7 +56,7 @@ export function SportPage({ sport, title }: SportPageProps) {
         setLoadingMore(true);
       }
       try {
-        const result = await api.sports.activities(sport, timeRange, offset);
+        const result = await api.sports.activities(sport, offset, ACTIVITIES_PAGE_SIZE);
         setActivities((prev) => (append ? [...prev, ...result.activities] : result.activities));
         setHasMore(result.has_more);
       } catch (e) {
@@ -77,7 +71,7 @@ export function SportPage({ sport, title }: SportPageProps) {
         }
       }
     },
-    [sport, timeRange],
+    [sport],
   );
 
   useEffect(() => {
@@ -86,7 +80,7 @@ export function SportPage({ sport, title }: SportPageProps) {
     loadActivities(0, false);
   }, [loadActivities]);
 
-  const selectedVolume = volume.find((r) => r.name === volumeKeyToSummaryKey(volumeKey));
+  const selected = periods.find((p) => p.name === volumeKey);
 
   return (
     <main className="page">
@@ -98,16 +92,16 @@ export function SportPage({ sport, title }: SportPageProps) {
       <section className={`section-card sport-panel tone-${toneFromSport(sport)}`}>
         <SegmentedControl options={SPORT_VOLUME_KEYS} value={volumeKey} onChange={setVolumeKey} />
 
-        {selectedVolume ? (
+        {selected ? (
           <SportSummaryMetrics
             sport={sport}
-            distanceKm={Number(selectedVolume.distance_total ?? 0)}
-            durationSec={Number(selectedVolume.duration_total ?? 0)}
-            sessions={Math.round(Number(selectedVolume.nb_trainings ?? 0))}
-            averageHr={Number(selectedVolume.averageHR ?? 0)}
-            elevationGainM={Number(selectedVolume.elevationGain ?? 0)}
-            averageSwolf={Number(selectedVolume.averageSwolf ?? 0)}
-            avgNpW={Number(selectedVolume.avgNpW ?? 0)}
+            distanceKm={selected.distance_total}
+            durationSec={selected.duration_total}
+            sessions={selected.nb_trainings}
+            averageHr={selected.averageHR ?? 0}
+            elevationGainM={selected.elevationGain}
+            averageSwolf={selected.averageSwolf ?? 0}
+            avgNpW={selected.avgNpW ?? 0}
             tint={toneFromSport(sport)}
           />
         ) : null}
@@ -115,9 +109,9 @@ export function SportPage({ sport, title }: SportPageProps) {
 
       <section className="section-card">
         <h2 className="section-title">Performance trends</h2>
-        {trends ? (
+        {selected ? (
           <VolumeChart
-            points={trends.points}
+            points={selected.points}
             yColumn="total_distance"
             yLabel="Distance (km)"
           />

@@ -77,10 +77,10 @@ def main():
         logger.info("Date filter: %s to %s (plus race-period scope).", start_date or "…", end_date)
 
     if get_api_key():
-        logger.info("structure_summary: LLM enabled (GEMINI_API_KEY set).")
+        logger.info("AI summary enabled (GEMINI_API_KEY set): one Gemini call per activity.")
     else:
         logger.warning(
-            "structure_summary: LLM disabled — no GEMINI_API_KEY; using heuristic only. "
+            "AI summary disabled — no GEMINI_API_KEY; heuristic labels only (ai_status=no_key). "
             "Use --force to replace rows after adding the key."
         )
 

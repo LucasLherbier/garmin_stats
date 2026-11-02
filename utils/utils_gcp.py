@@ -2,7 +2,9 @@ import os
 import io
 import logging
 import secrets
-from datetime import timedelta
+import threading
+import time
+from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from pathlib import Path
 import pandas as pd
@@ -409,10 +411,53 @@ def _run_bigquery(query):
         return pd.DataFrame()
 
 
-@lru_cache(maxsize=512)
-def query_bigquery(query: str):
-    """Execute a BigQuery query and return a pandas DataFrame (cached by query text)."""
+DATA_TABLES = ("activities", "workout_summaries", "races", "daily_wellness")
+_TABLE_MODIFIED_TTL_S = 60
+_table_modified_cache: dict[str, tuple[float, str]] = {}
+_table_modified_lock = threading.Lock()
+
+
+def _table_modified(table: str) -> str | None:
+    """Last-modified time of a BigQuery table (free metadata call, memoized 60 s)."""
+    now = time.monotonic()
+    with _table_modified_lock:
+        cached = _table_modified_cache.get(table)
+        if cached and now - cached[0] < _TABLE_MODIFIED_TTL_S:
+            return cached[1]
+    if bq_client is None:
+        return None
+    try:
+        modified = bq_client.get_table(f"{GCP_DATASET_ID}.{table}").modified
+    except Exception as e:
+        logger.warning(f"BigQuery metadata error for {table}: {e}")
+        return None
+    stamp = modified.isoformat() if modified else ""
+    with _table_modified_lock:
+        _table_modified_cache[table] = (now, stamp)
+    return stamp
+
+
+def data_version(tables: tuple[str, ...] = DATA_TABLES, daily: bool = True) -> str:
+    """Cache key that changes when one of `tables` is written.
+
+    With daily=True the UTC day is part of the key, for queries that use
+    CURRENT_DATE(). If table metadata is unavailable, fall back to an hourly key.
+    """
+    now = datetime.now(timezone.utc)
+    stamps = [_table_modified(t) for t in tables]
+    if any(s is None for s in stamps):
+        return now.strftime("%Y-%m-%dT%H")
+    return "|".join([now.date().isoformat(), *stamps] if daily else stamps)
+
+
+@lru_cache(maxsize=128)
+def _query_bigquery_cached(query: str, version: str):
     return _run_bigquery(query)
+
+
+def query_bigquery(query: str):
+    """Execute a BigQuery query and return a pandas DataFrame (cached by query text and data version)."""
+    return _query_bigquery_cached(query, data_version())
 
 
 def query_bigquery_live(query: str):

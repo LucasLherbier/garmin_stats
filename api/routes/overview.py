@@ -1,14 +1,18 @@
 from datetime import date
 
 import pandas as pd
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
+from actions.home_ytd import build_history_volume, build_home_ytd, build_year_compare
+from actions.sport_metrics import period_metrics
+from api.activity_facts import get_activity_facts
 from api.deps import get_query_fn
 from api.serializers import df_to_records
 from utils import sql_queries as sql
 from utils.pipeline.preprocess_activities import TRAINING_RACE_PERIODS
 
 router = APIRouter(prefix="/overview", tags=["overview"])
+BENCHMARK_WINDOWS = ("last_1", "last_4", "last_12", "last_18", "last_all")
 SPORT_LABELS = {
     "swimming": "Swim",
     "cycling": "Bike",
@@ -85,14 +89,18 @@ def volume_chart(
 @router.get("/benchmarks")
 def benchmarks(
     sport: str = "duration",
-    granularity: str = "week",
-    query=Depends(get_query_fn),
+    granularity: str = Query("week", pattern="^(week|month)$"),
 ):
-    if sport == "duration":
-        df = query(sql.get_volume_metrics_query_overview(granularity))
-    else:
-        df = query(sql.get_volume_metrics_query(sport, granularity))
-    return {"sport": sport, "granularity": granularity, "periods": df_to_records(df)}
+    facts = get_activity_facts()
+    if facts.empty:
+        return {"sport": sport, "granularity": granularity, "periods": []}
+    periods = period_metrics(
+        facts,
+        None if sport == "duration" else sport,
+        granularity,
+        windows=BENCHMARK_WINDOWS,
+    )
+    return {"sport": sport, "granularity": granularity, "periods": periods}
 
 
 @router.get("/weekly-breakdown")
@@ -148,6 +156,61 @@ def activity_heatmap(
         week_start = str(week_start_df.iloc[0]["week_start"])
 
     return {"sport": sport, "week_start": week_start, "cells": cells}
+
+
+@router.get("/home-ytd")
+def home_ytd(query=Depends(get_query_fn)):
+    today = date.today()
+    start = date(today.year, 1, 1).isoformat()
+    df = query(sql.get_activities_date_window_query(start, today.isoformat()))
+    return build_home_ytd(df, today=today)
+
+
+@router.get("/year-compare")
+def year_compare(
+    sport: str = Query("duration", pattern="^(duration|swimming|cycling|running|hiking)$"),
+    compare_year: int | None = Query(None, ge=2020, le=2100),
+    baseline_year: int | None = Query(None, ge=2020, le=2100),
+    query=Depends(get_query_fn),
+):
+    """Cumulative volume for two calendar years (aligned weeks)."""
+    today = date.today()
+    current = compare_year or today.year
+    baseline = baseline_year if baseline_year is not None else current - 1
+    if baseline == current:
+        raise HTTPException(status_code=400, detail="baseline_year and compare_year must differ.")
+    y_min = min(baseline, current)
+    start = date(y_min, 1, 1).isoformat()
+    df = query(sql.get_activities_date_window_query(start, today.isoformat()))
+    try:
+        return build_year_compare(
+            df,
+            sport=sport,
+            compare_year=current,
+            baseline_year=baseline,
+            today=today,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/history-volume")
+def history_volume(
+    year: int = Query(..., ge=2020, le=2100),
+    sport: str = Query("duration", pattern="^(duration|swimming|cycling|running|hiking)$"),
+    query=Depends(get_query_fn),
+):
+    today = date.today()
+    compare_year = today.year - 1
+    if year != compare_year:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Only the previous calendar year ({compare_year}) is supported for comparison.",
+        )
+    start = date(year, 1, 1).isoformat()
+    end = date(year, 12, 31).isoformat()
+    df = query(sql.get_activities_date_window_query(start, end))
+    return build_history_volume(df, year=year, sport=sport, today=today)
 
 
 @router.get("/activity-calendar")

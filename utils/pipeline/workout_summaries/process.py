@@ -2,7 +2,6 @@
 
 import json
 import logging
-import os
 
 import pandas as pd
 
@@ -25,8 +24,11 @@ from utils.pipeline.workout_summaries.lap_analysis import (
 )
 from utils.pipeline.workout_summaries.segments import detect_segments
 from utils.pipeline.workout_summaries.structure_summary import build_main_structure_summary
-from utils.pipeline.workout_summaries.structure_summary_llm import build_structure_summary_llm
-from utils.gemini_client import get_api_key
+from utils.pipeline.workout_summaries.ai_summary import (
+    ai_fields,
+    build_block_context,
+    generate_ai_summary,
+)
 from google.cloud import bigquery
 
 from utils.utils_gcp import (
@@ -40,36 +42,34 @@ from utils.utils_gcp import (
 
 logger = logging.getLogger(__name__)
 
-LLM_STRUCTURE_SPORTS = {"running", "cycling"}
-
-
-def _use_llm_structure_summary() -> bool:
-    if os.getenv("STRUCTURE_SUMMARY_LLM", "1").strip().lower() in ("0", "false", "no", "off"):
-        return False
-    return get_api_key() is not None
-
-
-def _build_structure_summary(
+def _ai_structure_summary(
     sport: str,
     activity_row,
-    segments,
     laps,
-    lap_analysis,
-    phases,
-) -> tuple[str | None, str]:
-    heuristic = build_main_structure_summary(segments, sport, activity_row, laps, phases)
-    if sport not in LLM_STRUCTURE_SPORTS or not _use_llm_structure_summary() or not laps:
-        return heuristic, "heuristic"
-    summary, source = build_structure_summary_llm(
+    heuristic: str | None,
+    recent_activities,
+) -> tuple[str | None, str, dict]:
+    """100% AI reading (ai_summary), heuristic-only fallback.
+
+    On AI success the label comes from the model's full reading of
+    the splits (source 'llm_splits'). On failure the OLD one-liner
+    LLM is NOT consulted: the row keeps the heuristic label, and
+    ai_fields records ai_status / ai_attempts for the retry pass
+    (ai_retry.py). Returns (summary, source, ai_columns).
+    """
+    activity_date = pd.to_datetime(activity_row["startTimeLocal"]).date()
+    context = build_block_context(
+        activity_date,
         sport,
-        activity_row,
-        lap_analysis,
-        segments,
-        laps=laps,
-        phases=phases,
-        fallback=True,
+        recent_activities or [],
+        WORKOUT_SUMMARY_RACE_PERIODS,
     )
-    return summary, source
+    # activities.distance is already km (preprocess_activities divides by 1000).
+    result = generate_ai_summary(sport, dict(activity_row), laps, context)
+    fields = ai_fields(result)
+    if result.get("ai_status") == "ok":
+        return result["label"], "llm_splits", fields
+    return heuristic, "heuristic", fields
 
 TABLE_NAME = "workout_summaries"
 
@@ -125,6 +125,37 @@ def fetch_activities(activity_ids=None, since=None, until=None):
     return bq_client.query(query).to_dataframe()
 
 
+def _recent_activity_rows(activities_df):
+    """Lightweight block-context rows (activities.distance is already km)."""
+    rows = []
+    for _, row in activities_df.iterrows():
+        rows.append(
+            {
+                "date": pd.to_datetime(row["startTimeLocal"]).date(),
+                "sport": row.get("sport"),
+                "distance_km": float(row.get("distance") or 0),
+            }
+        )
+    return rows
+
+
+def fetch_recent_activities():
+    """All scoped activities (race periods) as block-context pool.
+
+    ONE query per batch — never one per activity — so each activity
+    sees the previous 28 days of the same sport. Best-effort: returns
+    [] when BigQuery is unavailable, context is optional.
+    """
+    if bq_client is None:
+        return []
+    try:
+        df = bq_client.query(get_activities_query()).to_dataframe()
+    except Exception:
+        logger.warning("Block-context fetch failed; continuing without it.")
+        return []
+    return _recent_activity_rows(df)
+
+
 def existing_summary_ids(activity_ids):
     if bq_client is None or not activity_ids:
         return set()
@@ -144,7 +175,7 @@ def csv_path_for_activity(activity_id, month_key):
     return f"data/raw/{month_key}/{activity_id}/{activity_id}.csv"
 
 
-def process_activity_row(activity_row):
+def process_activity_row(activity_row, recent_activities=None):
     """Parse one activity CSV into a workout_summaries row."""
     activity_id = int(activity_row["activityId"])
     month_key = activity_row["month_key"]
@@ -235,8 +266,11 @@ def process_activity_row(activity_row):
     else:
         lap_analysis = []
     phases = [row["phase"] for row in lap_analysis] if lap_analysis else None
-    structure_summary, structure_summary_source = _build_structure_summary(
-        detected_sport, activity_row, segments, laps, lap_analysis, phases
+    heuristic = build_main_structure_summary(
+        segments, detected_sport, activity_row, laps, phases
+    )
+    structure_summary, structure_summary_source, ai_cols = _ai_structure_summary(
+        detected_sport, activity_row, laps, heuristic, recent_activities
     )
     summary_text = build_summary_text(activity_row, laps, detected_sport)
     if structure_summary:
@@ -255,6 +289,7 @@ def process_activity_row(activity_row):
             "lap_analysis": json.dumps(json_safe(lap_analysis), allow_nan=False),
             "lap_count": len(laps),
             "parse_status": "ok",
+            **ai_cols,
         }
     )
     return base_row
@@ -271,6 +306,8 @@ def build_workout_summaries(activity_ids=None, skip_existing=True, since=None, u
     to_process = len(activities) - len(existing_ids) if skip_existing else len(activities)
     if to_process:
         logger.info("Processing %s activities…", to_process)
+
+    recent_activities = fetch_recent_activities()
 
     skipped = 0
     processed = 0
@@ -291,7 +328,7 @@ def build_workout_summaries(activity_ids=None, skip_existing=True, since=None, u
             sport,
             activity_id,
         )
-        row = process_activity_row(activity_row)
+        row = process_activity_row(activity_row, recent_activities)
         summary = (row.get("structure_summary") or "")[:100]
         if len((row.get("structure_summary") or "")) > 100:
             summary += "…"

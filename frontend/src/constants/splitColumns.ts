@@ -7,7 +7,6 @@ export const BIKE_SPLIT_DETAIL_COLUMNS = [
   'Avg HR',
   'Max HR',
   'Avg Bike Cadence',
-  'Calories',
   'Elevation Gain',
   'Elev Loss',
   'Avg Speed',
