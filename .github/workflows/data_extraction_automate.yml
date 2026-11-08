@@ -1,10 +1,10 @@
 name: Weekly Garmin Sync
 
 on:
-  # In-app sync on API startup replaces this cron (see api/sync_scheduler.py).
-  # Re-enable if you run the API without GARMIN_SYNC_ON_STARTUP.
-  # schedule:
-  #   - cron: '0 2 * * 1'
+  # Launch-time in-app sync is paused (see api/sync_scheduler.py).
+  # Monday 02:00 UTC is the scheduled weekly run. The in-app sync button stays available.
+  schedule:
+    - cron: '0 2 * * 1'
   workflow_dispatch:
 
 jobs:

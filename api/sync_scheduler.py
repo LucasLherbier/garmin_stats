@@ -1,10 +1,10 @@
-"""In-app Garmin sync: auto-refresh on API startup + optional manual trigger.
+"""In-app Garmin sync: manual trigger from the sync button.
 
-Disable startup sync: GARMIN_SYNC_ON_STARTUP=off
+Launch-time auto sync is paused (see start_scheduler). The weekly GitHub
+Actions cron still runs the same pipeline
+(see .github/workflows/data_extraction_automate.yml).
+
 Disable all in-app sync: GARMIN_SYNC_ENABLED=false
-
-If GitHub Actions cron still runs the same pipeline, disable one path to avoid
-double sync (see .github/workflows/data_extraction_automate.yml).
 """
 
 from __future__ import annotations
@@ -167,7 +167,10 @@ def maybe_sync_on_startup() -> None:
 
 
 def start_scheduler() -> None:
-    maybe_sync_on_startup()
+    # Launch-time auto sync is paused. The sync button still calls
+    # trigger_manual_sync(); the weekly run is the GitHub Actions cron.
+    # maybe_sync_on_startup()
+    return
 
 
 def stop_scheduler() -> None:
