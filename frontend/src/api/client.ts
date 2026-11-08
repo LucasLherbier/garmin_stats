@@ -17,6 +17,45 @@ function normalizeApiBase(raw: string | undefined): string {
 
 const API_BASE = normalizeApiBase(import.meta.env.VITE_API_BASE);
 
+export type ActivityDetailEnrichment = {
+  structure_summary: string | null;
+  track: Array<{ lat: number; lon: number }> | null;
+  splits: Record<string, unknown>[] | null;
+  laps: Record<string, unknown>[] | null;
+  telemetry: Record<string, unknown>[] | null;
+  avg_power_w: number | null;
+  avg_np_w: number | null;
+  power_profile: {
+    display_labels: string[];
+    values: number[];
+    np_values?: (number | null)[];
+    seconds: number[];
+  } | null;
+  workout_laps: Record<string, unknown>[] | null;
+};
+
+export type ActivityDetailPayload = ActivityDetailEnrichment & {
+  activity: Record<string, unknown>;
+  sport: string;
+};
+
+export function mergeActivityDetail(
+  summary: ActivityDetailPayload,
+  assets: ActivityDetailEnrichment | null,
+): ActivityDetailPayload {
+  if (!assets) return summary;
+  const merged: ActivityDetailPayload = { ...summary };
+  for (const [key, value] of Object.entries(assets) as [
+    keyof ActivityDetailEnrichment,
+    ActivityDetailEnrichment[keyof ActivityDetailEnrichment],
+  ][]) {
+    if (value != null) {
+      merged[key] = value as never;
+    }
+  }
+  return merged;
+}
+
 export function apiUrl(path: string, params?: Record<string, string | number | undefined>): string {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
   const url = `${API_BASE}${normalizedPath}`;
@@ -157,25 +196,12 @@ export const api = {
         page_size: number;
         has_more: boolean;
       }>(apiUrl(`/sports/${sport}/activities`, { offset, pageSize })),
+    activityDetailSummary: (activityId: number) =>
+      request<ActivityDetailPayload>(apiUrl(`/sports/activities/${activityId}/summary`)),
+    activityDetailAssets: (activityId: number) =>
+      request<ActivityDetailEnrichment>(apiUrl(`/sports/activities/${activityId}/assets`)),
     activityDetail: (activityId: number) =>
-      request<{
-        activity: Record<string, unknown>;
-        sport: string;
-        structure_summary: string | null;
-        track: Array<{ lat: number; lon: number }> | null;
-        splits: Record<string, unknown>[] | null;
-        laps: Record<string, unknown>[] | null;
-        telemetry: Record<string, unknown>[] | null;
-        avg_power_w: number | null;
-        avg_np_w: number | null;
-        power_profile: {
-          display_labels: string[];
-          values: number[];
-          np_values?: (number | null)[];
-          seconds: number[];
-        } | null;
-        workout_laps: Record<string, unknown>[] | null;
-      }>(apiUrl(`/sports/activities/${activityId}`)),
+      request<ActivityDetailPayload>(apiUrl(`/sports/activities/${activityId}`)),
   },
 
   stats: {
@@ -313,9 +339,30 @@ export const api = {
       ),
   },
 
+  sync: {
+    status: () =>
+      request<{
+        status: string;
+        phase: string | null;
+        started_at: string | null;
+        finished_at: string | null;
+        detail: string | null;
+      }>(apiUrl('/sync/status')),
+  },
+
   report: {
     sync: (password: string) =>
-      request<{ ok: boolean; message: string; workflow_url: string }>(apiUrl('/report/sync'), {
+      request<{
+        ok: boolean;
+        message: string;
+        last_run: {
+          status: string;
+          phase: string | null;
+          started_at: string | null;
+          finished_at: string | null;
+          detail: string | null;
+        };
+      }>(apiUrl('/report/sync'), {
         method: 'POST',
         body: JSON.stringify({ password }),
       }),

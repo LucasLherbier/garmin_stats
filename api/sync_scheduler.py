@@ -25,10 +25,18 @@ _LAST_SYNC_GCS_PATH = "sync_state/last_sync.json"
 _run_lock = threading.Lock()
 _last_run: dict = {
     "status": "idle",
+    "phase": None,
     "started_at": None,
     "finished_at": None,
     "detail": None,
 }
+
+
+def update_sync_progress(phase: str, detail: str | None = None) -> None:
+    """Update in-memory sync status for /api/sync/status polling."""
+    _last_run["phase"] = phase
+    if detail is not None:
+        _last_run["detail"] = detail
 
 
 def _read_last_success() -> datetime | None:
@@ -77,14 +85,20 @@ def _execute_sync(manual: bool) -> dict:
     started = datetime.now(timezone.utc)
     _last_run.update(
         status="running",
+        phase="starting",
         started_at=started.isoformat(),
         finished_at=None,
-        detail="manual" if manual else "startup",
+        detail="Connecting…" if manual else "Startup sync",
     )
     try:
         run_garmin_sync(sync_start_date())
         finished = datetime.now(timezone.utc)
-        _last_run.update(status="success", finished_at=finished.isoformat(), detail="ok")
+        _last_run.update(
+            status="success",
+            phase="done",
+            finished_at=finished.isoformat(),
+            detail="Sync completed successfully.",
+        )
         _write_last_success(finished)
         try:
             from utils.utils_gcp import query_bigquery
@@ -98,6 +112,7 @@ def _execute_sync(manual: bool) -> dict:
         finished = datetime.now(timezone.utc)
         _last_run.update(
             status="failed",
+            phase="error",
             finished_at=finished.isoformat(),
             detail=str(exc),
         )

@@ -1033,6 +1033,10 @@ a {
   color: var(--accent);
 }
 
+.sync-modal-msg.progress {
+  color: var(--text-muted, #8a8a8a);
+}
+
 .sync-modal-msg.err {
   color: #ff6b6b;
 }

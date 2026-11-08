@@ -21,16 +21,28 @@ def sync_start_date() -> str:
     return (datetime.now() - timedelta(days=14)).strftime("%Y-%m-%d")
 
 
+def _sync_progress(phase: str, detail: str) -> None:
+    try:
+        from api.sync_scheduler import update_sync_progress
+
+        update_sync_progress(phase, detail)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def run_garmin_sync(start_date: str | None = None) -> None:
     start_date = start_date or sync_start_date()
+    _sync_progress("garmin", "Connecting to Garmin…")
     client = get_garmin_client()
     if not client:
         raise RuntimeError(
             "Garmin client unavailable. Set GARMIN_PERSONAL_API_KEY or GARMIN_SOURCE=legacy."
         )
 
+    _sync_progress("activities", f"Fetching activities since {start_date}…")
     process_date_range(start_date, client=client)
 
+    _sync_progress("summaries", "Backfilling workout summaries…")
     summaries_cmd = [
         sys.executable,
         str(_ROOT / "scripts" / "backfill_workout_summaries.py"),
@@ -42,6 +54,7 @@ def run_garmin_sync(start_date: str | None = None) -> None:
 
     yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
     last_week = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+    _sync_progress("wellness", f"Daily wellness {last_week} → {yesterday}…")
     logger.info("Daily wellness catch-up: %s to %s", last_week, yesterday)
     wellness_df = process_daily_wellness(client, last_week, yesterday)
     if wellness_df.empty:

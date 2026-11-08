@@ -102,3 +102,18 @@ def fit_bytes_to_gpx(fit_input: bytes) -> bytes | None:
     if point_count == 0:
         return None
     return ET.tostring(gpx, encoding="utf-8", xml_declaration=True)
+
+
+def fit_session_normalized_power(fit_input: bytes) -> int | None:
+    """Garmin's activity NP from the FIT session message (matches Connect when present)."""
+    from fitparse import FitFile
+
+    fit = FitFile(BytesIO(fit_input))
+    for message in fit.get_messages("session"):
+        for field in message:
+            if field.name == "normalized_power" and field.value is not None:
+                try:
+                    return int(round(float(field.value)))
+                except (TypeError, ValueError):
+                    return None
+    return None

@@ -209,6 +209,15 @@ def process_date_range(start_date, client=None):
         execution_date_str = execution_date.strftime("%Y-%m-%d")
 
         logger.info(f"\nProcessing week: {last_week_date_str} (Mon) to {execution_date_str} (Sun)")
+        try:
+            from api.sync_scheduler import update_sync_progress
+
+            update_sync_progress(
+                "activities",
+                f"Week {last_week_date_str} → {execution_date_str}",
+            )
+        except Exception:  # noqa: BLE001
+            pass
 
         try:
             df = extract_weekly_activities(client, last_week_date_str, execution_date_str)

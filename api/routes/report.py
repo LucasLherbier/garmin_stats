@@ -57,10 +57,14 @@ def _verify_sync_password(password: str) -> None:
 def trigger_sync(body: SyncRequest):
     _verify_sync_password(body.password)
     result = trigger_manual_sync()
-    ok = result.get("status") in ("started", "success")
+    status = result.get("status")
+    ok = status in ("started", "success", "busy")
+    message = result.get("detail") or status
+    if status == "busy":
+        message = "Sync already running — showing progress…"
     return {
         "ok": ok,
-        "message": result.get("detail") or result.get("status"),
+        "message": message,
         "last_run": get_last_run_status(),
     }
 

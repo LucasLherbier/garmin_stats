@@ -1,6 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
-import { api } from '../api/client';
+import {
+  api,
+  mergeActivityDetail,
+  type ActivityDetailEnrichment,
+  type ActivityDetailPayload,
+} from '../api/client';
 import { PowerCurveChart } from '../components/PowerCurveChart';
 import { PowerProfileChart } from '../components/PowerProfileChart';
 import { RouteMap } from '../components/RouteMap';
@@ -39,8 +44,11 @@ export function ActivityDetailPage() {
   const { activityId } = useParams<{ activityId: string }>();
   const location = useLocation();
   const fromStats = location.pathname.startsWith('/stats/');
-  const [loading, setLoading] = useState(true);
+  const [loadingSummary, setLoadingSummary] = useState(true);
+  const [loadingAssets, setLoadingAssets] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [summary, setSummary] = useState<ActivityDetailPayload | null>(null);
+  const [assets, setAssets] = useState<ActivityDetailEnrichment | null>(null);
   const [sharing, setSharing] = useState(false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [shareExpiryDays, setShareExpiryDays] = useState<number | null>(null);
@@ -48,26 +56,45 @@ export function ActivityDetailPage() {
   const [shareError, setShareError] = useState<string | null>(null);
   const [shareHtml, setShareHtml] = useState<string | null>(null);
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
-  const [detail, setDetail] = useState<Awaited<ReturnType<typeof api.sports.activityDetail>> | null>(
-    null,
+  const detail = useMemo(
+  () => (summary ? mergeActivityDetail(summary, assets) : null),
+  [summary, assets],
   );
 
   useEffect(() => {
     if (!activityId) return;
+    const id = Number(activityId);
     let cancelled = false;
-    async function load() {
-      setLoading(true);
-      setError(null);
-      try {
-        const data = await api.sports.activityDetail(Number(activityId));
-        if (!cancelled) setDetail(data);
-      } catch (e) {
+    setSummary(null);
+    setAssets(null);
+    setLoadingSummary(true);
+    setLoadingAssets(true);
+    setError(null);
+
+    void api.sports
+      .activityDetailSummary(id)
+      .then((data) => {
+        if (!cancelled) setSummary(data);
+      })
+      .catch((e: unknown) => {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    load();
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingSummary(false);
+      });
+
+    void api.sports
+      .activityDetailAssets(id)
+      .then((data) => {
+        if (!cancelled) setAssets(data);
+      })
+      .catch(() => {
+        /* keep summary / partial UI if assets fail */
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingAssets(false);
+      });
+
     return () => {
       cancelled = true;
     };
@@ -149,7 +176,7 @@ export function ActivityDetailPage() {
     <main className="page">
       <Link to={backTo} className="back-link">← Back</Link>
 
-      {loading ? <div className="loading">Loading…</div> : null}
+      {loadingSummary && !summary ? <div className="loading">Loading…</div> : null}
       {error ? <div className="error">{error}</div> : null}
 
       {activity ? (
@@ -227,13 +254,6 @@ export function ActivityDetailPage() {
             <p className="activity-structure-summary">{detail.structure_summary}</p>
           ) : null}
 
-          {detail?.track ? (
-            <section className="section-card section-card--flush">
-              <h3 className="section-title">Route</h3>
-              <RouteMap points={detail.track} />
-            </section>
-          ) : null}
-
           {isCycling ? (
             <div className="detail-metrics">
               <DetailMetric
@@ -301,6 +321,39 @@ export function ActivityDetailPage() {
             sport={detail?.sport}
           />
 
+          {isCycling && bikeLaps.length ? <BikeWorkoutSplitsTable laps={bikeLaps} /> : null}
+
+          {hasWorkoutLaps ? <RunSplitsTable laps={laps} /> : null}
+
+          {detail?.splits?.length ? (
+            <SplitsTable
+              rows={detail.splits}
+              title={hasWorkoutLaps || (isCycling && bikeLaps.length) ? 'Split details' : 'Splits'}
+              columns={
+                isCycling && (hasWorkoutLaps || bikeLaps.length)
+                  ? BIKE_SPLIT_DETAIL_COLUMNS
+                  : hasWorkoutLaps
+                    ? RUN_SPLIT_DETAIL_COLUMNS
+                    : undefined
+              }
+            />
+          ) : null}
+
+          {!hasWorkoutLaps && !detail?.splits?.length && detail?.workout_laps?.length ? (
+            <SplitsTable rows={detail.workout_laps} title="Splits" />
+          ) : null}
+
+          {loadingAssets ? (
+            <p className="loading loading-inline">Loading map and charts…</p>
+          ) : null}
+
+          {detail?.track ? (
+            <section className="section-card section-card--flush">
+              <h3 className="section-title">Route</h3>
+              <RouteMap points={detail.track} />
+            </section>
+          ) : null}
+
           {hasWorkoutLaps ? (
             <WorkoutPaceChart laps={laps} avgPaceLabel={activity.pace ? String(activity.pace) : undefined} />
           ) : null}
@@ -332,27 +385,6 @@ export function ActivityDetailPage() {
             )
           ) : null}
 
-          {isCycling && bikeLaps.length ? <BikeWorkoutSplitsTable laps={bikeLaps} /> : null}
-
-          {hasWorkoutLaps ? <RunSplitsTable laps={laps} /> : null}
-
-          {detail?.splits?.length ? (
-            <SplitsTable
-              rows={detail.splits}
-              title={hasWorkoutLaps || (isCycling && bikeLaps.length) ? 'Split details' : 'Splits'}
-              columns={
-                isCycling && (hasWorkoutLaps || bikeLaps.length)
-                  ? BIKE_SPLIT_DETAIL_COLUMNS
-                  : hasWorkoutLaps
-                    ? RUN_SPLIT_DETAIL_COLUMNS
-                    : undefined
-              }
-            />
-          ) : null}
-
-          {!hasWorkoutLaps && !detail?.splits?.length && detail?.workout_laps?.length ? (
-            <SplitsTable rows={detail.workout_laps} title="Splits" />
-          ) : null}
         </>
       ) : null}
     </main>

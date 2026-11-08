@@ -1,6 +1,55 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { api, clearApiCache } from '../api/client';
 
+function formatPhaseLabel(phase: string | null | undefined): string | null {
+  if (!phase) return null;
+  const labels: Record<string, string> = {
+    starting: 'Starting',
+    garmin: 'Garmin',
+    activities: 'Activities',
+    summaries: 'Workout summaries',
+    wellness: 'Wellness',
+    done: 'Done',
+    error: 'Error',
+  };
+  return labels[phase] ?? phase;
+}
+
+function describeSyncStatus(status: {
+  status: string;
+  phase?: string | null;
+  detail?: string | null;
+}): string {
+  const phase = formatPhaseLabel(status.phase);
+  const detail = status.detail?.trim();
+  if (phase && detail) return `${phase}: ${detail}`;
+  if (detail) return detail;
+  if (phase) return phase;
+  return status.status;
+}
+
+const SYNC_TERMINAL = new Set(['success', 'failed', 'skipped', 'idle']);
+
+async function waitForSyncCompletion(
+  onUpdate: (line: string) => void,
+  maxWaitMs = 30 * 60 * 1000,
+): Promise<{ ok: boolean; line: string }> {
+  const started = Date.now();
+  while (Date.now() - started < maxWaitMs) {
+    const st = await api.sync.status();
+    const line = describeSyncStatus(st);
+    onUpdate(line);
+    if (SYNC_TERMINAL.has(st.status) && st.status !== 'idle') {
+      return { ok: st.status === 'success', line };
+    }
+    if (st.status === 'idle' && st.finished_at) {
+      return { ok: false, line };
+    }
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+  return { ok: false, line: 'Timed out waiting for sync (30 min).' };
+}
+
 export function SyncButton() {
   const titleId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -9,6 +58,7 @@ export function SyncButton() {
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
+  const [progressLine, setProgressLine] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -21,6 +71,7 @@ export function SyncButton() {
     setOpen(false);
     setSyncError(null);
     setSyncMessage(null);
+    setProgressLine(null);
   }
 
   async function handleSync() {
@@ -31,13 +82,20 @@ export function SyncButton() {
     setSyncing(true);
     setSyncMessage(null);
     setSyncError(null);
+    setProgressLine('Starting sync…');
     try {
       const result = await api.report.sync(syncPassword);
-      setSyncMessage(result.message);
-      if (!result.ok) setSyncError(result.message);
-      else {
-        setSyncPassword('');
+      if (!result.ok) {
+        setSyncError(result.message || 'Could not start sync.');
+        return;
+      }
+      setSyncPassword('');
+      const outcome = await waitForSyncCompletion(setProgressLine);
+      if (outcome.ok) {
+        setSyncMessage(outcome.line);
         clearApiCache();
+      } else {
+        setSyncError(outcome.line);
       }
     } catch (e) {
       setSyncError(e instanceof Error ? e.message : 'Sync failed');
@@ -52,7 +110,7 @@ export function SyncButton() {
         type="button"
         className="sync-top-btn"
         aria-label="Sync Garmin data"
-        title="Upload / Sync"
+        title="Sync Garmin data"
         onClick={() => setOpen(true)}
       >
         <svg viewBox="0 0 24 24" aria-hidden>
@@ -74,7 +132,10 @@ export function SyncButton() {
             <h2 id={titleId} className="sync-modal-title">
               Sync data
             </h2>
-            <p className="sync-modal-hint">Weekly Garmin extract via GitHub Actions.</p>
+            <p className="sync-modal-hint">
+              Runs the same Garmin pipeline on this machine as the weekly script (extract →
+              summaries → wellness). Requires API `.env` with Garmin + GCP credentials.
+            </p>
             <input
               ref={inputRef}
               type="password"
@@ -99,11 +160,19 @@ export function SyncButton() {
                 disabled={syncing || !syncPassword.trim()}
                 onClick={() => void handleSync()}
               >
-                {syncing ? 'Starting…' : 'Upload / Sync'}
+                {syncing ? 'Syncing…' : 'Run sync'}
               </button>
             </div>
+            {syncing && progressLine ? (
+              <p className="sync-modal-msg progress" aria-live="polite">
+                {progressLine}
+              </p>
+            ) : null}
             {syncMessage ? <p className="sync-modal-msg ok">{syncMessage}</p> : null}
             {syncError ? <p className="sync-modal-msg err">{syncError}</p> : null}
+            <p className="sync-modal-hint">
+              Full logs: watch the terminal where uvicorn is running.
+            </p>
           </div>
         </div>
       ) : null}

@@ -7,7 +7,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from actions import utils as ut
 from actions.activity_splits import laps_to_display_dataframe, parse_laps_field
 from actions.cycling_splits import aggregate_selected_laps, power_from_csv
-from actions.parse_fit import fit_track_points, parse_fit_to_dataframe
+from actions.parse_fit import (
+    fit_session_normalized_power,
+    fit_track_points,
+    parse_fit_to_dataframe,
+)
 from actions.parse_tcx_csv import parse_tcx_to_dataframe
 from actions.power_curve import (
     POWER_CURVE_DURATIONS,
@@ -23,6 +27,7 @@ from api.activity_facts import get_activity_facts
 from api.deps import get_query_fn
 from api.serializers import df_to_records, record_from_series, safe_float, safe_int, safe_str
 from utils import sql_queries as sql
+from utils.pipeline.fit_laps_export import fit_bytes_to_connect_lap_csv
 from utils.pipeline.workout_summaries.parse_laps import normalize_laps_from_csv
 from utils.utils_gcp import bucket, check_gcs_path_exists, query_bigquery_live, read_csv_from_gcs
 
@@ -133,6 +138,189 @@ def _gcs_base_path(day_value, activity_id: int) -> str:
     return f"data/raw/{activity_month}/{activity_id}"
 
 
+def _load_activity_row(activity_id: int, query):
+    df = query(sql.get_activity_by_id_query(activity_id))
+    if df.empty:
+        raise HTTPException(status_code=404, detail="Activity not found")
+    row = df.iloc[0]
+    sport_type = safe_str(row.get("activityTypeGrouped")) or "running"
+    if sport_type not in VALID_SPORTS:
+        raise HTTPException(status_code=404, detail="Activity not found")
+    return row, sport_type
+
+
+def _activity_payload(row, sport_type: str) -> dict:
+    detail = record_from_series(row)
+    avg_speed = float(row.get("averageSpeed") or 0)
+    detail["pace"] = _pace_from_speed(avg_speed) if sport_type == "running" else None
+    detail["durationFormatted"] = ut.format_duration_no_days(row.get("duration"))
+    return detail
+
+
+def _empty_enrichment_fields() -> dict:
+    return {
+        "structure_summary": None,
+        "track": None,
+        "splits": None,
+        "telemetry": None,
+        "avg_power_w": None,
+        "avg_np_w": None,
+        "power_profile": None,
+        "workout_laps": None,
+        "laps": None,
+    }
+
+
+def _apply_lap_csv(df_csv: pd.DataFrame, sport_type: str, result: dict) -> None:
+    if sport_type == "cycling":
+        avg_power, avg_np = power_from_csv(df_csv)
+        if result.get("avg_power_w") is None and avg_power is not None:
+            result["avg_power_w"] = int(round(avg_power))
+        if result.get("avg_np_w") is None and avg_np is not None:
+            result["avg_np_w"] = int(round(avg_np))
+    df_laps = df_csv[df_csv["Split"] != "Summary"]
+    if result.get("splits") is None:
+        result["splits"] = df_to_records(df_laps)
+    if result.get("laps") is None and sport_type in VALID_SPORTS:
+        lap_rows, _detected = normalize_laps_from_csv(df_laps, sport_type)
+        if lap_rows:
+            result["laps"] = lap_rows
+
+
+def _apply_workout_summary(activity_id: int, sport_type: str, result: dict) -> None:
+    try:
+        summary_df = query_bigquery_live(sql.get_workout_summary_detail_query(activity_id))
+        if summary_df.empty:
+            return
+        summary_row = summary_df.iloc[0]
+        structure = summary_row.get("structure_summary")
+        if structure is not None and str(structure).strip() and str(structure).lower() != "nan":
+            result["structure_summary"] = str(structure).strip()
+        if summary_row.get("parse_status") != "ok":
+            return
+        laps = parse_laps_field(summary_row.get("laps"))
+        if not laps:
+            return
+        result["laps"] = df_to_records(pd.DataFrame(laps))
+        display_df = laps_to_display_dataframe(laps, sport_type)
+        result["workout_laps"] = df_to_records(display_df)
+        if sport_type == "cycling":
+            avg_power_w, avg_np_w = _cycling_power_from_laps(laps)
+            if avg_power_w is not None:
+                result["avg_power_w"] = avg_power_w
+            if avg_np_w is not None:
+                result["avg_np_w"] = avg_np_w
+    except Exception:
+        pass
+
+
+def _load_activity_summary(activity_id: int, query) -> dict:
+    row, sport_type = _load_activity_row(activity_id, query)
+    result = {
+        "activity": _activity_payload(row, sport_type),
+        "sport": sport_type,
+        **_empty_enrichment_fields(),
+    }
+    if not bucket:
+        return result
+    base = _gcs_base_path(row.get("Day"), activity_id)
+    csv_path = f"{base}/{activity_id}.csv"
+    try:
+        if check_gcs_path_exists(csv_path):
+            _apply_lap_csv(read_csv_from_gcs(csv_path), sport_type, result)
+    except Exception:
+        pass
+    return result
+
+
+def _load_activity_assets(activity_id: int, query) -> dict:
+    row, sport_type = _load_activity_row(activity_id, query)
+    result = _empty_enrichment_fields()
+    if not bucket:
+        return result
+
+    base = _gcs_base_path(row.get("Day"), activity_id)
+    gpx_path = f"{base}/{activity_id}.gpx"
+    csv_path = f"{base}/{activity_id}.csv"
+    tcx_path = f"{base}/{activity_id}.tcx"
+    fit_path = f"{base}/{activity_id}.fit"
+    fit_content: bytes | None = None
+
+    try:
+        if check_gcs_path_exists(gpx_path):
+            points = gpx_track_points(bucket.blob(gpx_path).download_as_bytes())
+            result["track"] = [{"lat": lat, "lon": lon} for lat, lon in points]
+    except Exception:
+        pass
+
+    try:
+        if check_gcs_path_exists(csv_path):
+            _apply_lap_csv(read_csv_from_gcs(csv_path), sport_type, result)
+    except Exception:
+        pass
+
+    try:
+        if check_gcs_path_exists(tcx_path):
+            tcx_content = bucket.blob(tcx_path).download_as_bytes()
+            df_tcx = parse_tcx_to_dataframe(tcx_content)
+            result["telemetry"] = _telemetry_from_dataframe(df_tcx)
+            if sport_type == "cycling":
+                if check_gcs_path_exists(fit_path):
+                    fit_content = bucket.blob(fit_path).download_as_bytes()
+                    _apply_power_profile(result, power_profile_from_fit(fit_content))
+                elif "Watts" in df_tcx.columns:
+                    _apply_power_profile(
+                        result, power_profile_from_telemetry(df_tcx["Time"], df_tcx["Watts"])
+                    )
+    except Exception:
+        pass
+
+    try:
+        if check_gcs_path_exists(fit_path):
+            if fit_content is None:
+                fit_content = bucket.blob(fit_path).download_as_bytes()
+
+            if not result.get("splits"):
+                activity_type = safe_str(row.get("activityType")) or sport_type
+                derived = fit_bytes_to_connect_lap_csv(
+                    fit_content, activity_type=activity_type
+                )
+                if derived is not None and not derived.empty:
+                    _apply_lap_csv(derived, sport_type, result)
+
+            if not result["track"]:
+                points = fit_track_points(fit_content)
+                if points:
+                    result["track"] = [{"lat": lat, "lon": lon} for lat, lon in points]
+            if not result["telemetry"]:
+                result["telemetry"] = _telemetry_from_dataframe(
+                    parse_fit_to_dataframe(fit_content)
+                )
+            if sport_type == "cycling" and result["avg_np_w"] is None:
+                garmin_np = fit_session_normalized_power(fit_content)
+                if garmin_np is not None:
+                    result["avg_np_w"] = garmin_np
+                else:
+                    np_val = normalized_power_1hz(parse_fit_power_series(fit_content))
+                    if np_val is not None:
+                        result["avg_np_w"] = int(round(np_val))
+                if not result["power_profile"]:
+                    _apply_power_profile(result, power_profile_from_fit(fit_content))
+    except Exception:
+        pass
+
+    _apply_workout_summary(activity_id, sport_type, result)
+    return result
+
+
+def _merge_activity_detail(summary: dict, assets: dict) -> dict:
+    merged = {**summary}
+    for key, value in assets.items():
+        if value is not None:
+            merged[key] = value
+    return merged
+
+
 @router.get("/{sport}/summary")
 def summary(sport: str):
     """Metrics and weekly chart points for every period filter, computed from one cached dataset."""
@@ -168,127 +356,19 @@ def activities(
     }
 
 
+@router.get("/activities/{activity_id}/summary")
+def activity_detail_summary(activity_id: int, query=Depends(get_query_fn)):
+    return _load_activity_summary(activity_id, query)
+
+
+@router.get("/activities/{activity_id}/assets")
+def activity_detail_assets(activity_id: int, query=Depends(get_query_fn)):
+    return _load_activity_assets(activity_id, query)
+
+
 @router.get("/activities/{activity_id}")
 def activity_detail(activity_id: int, query=Depends(get_query_fn)):
-    df = query(sql.get_activity_by_id_query(activity_id))
-    if df.empty:
-        raise HTTPException(status_code=404, detail="Activity not found")
-
-    row = df.iloc[0]
-    sport_type = safe_str(row.get("activityTypeGrouped")) or "running"
-    if sport_type not in VALID_SPORTS:
-        raise HTTPException(status_code=404, detail="Activity not found")
-
-    detail = record_from_series(row)
-    avg_speed = float(row.get("averageSpeed") or 0)
-    detail["pace"] = _pace_from_speed(avg_speed) if sport_type == "running" else None
-    detail["durationFormatted"] = ut.format_duration_no_days(row.get("duration"))
-
-    result: dict = {
-        "activity": detail,
-        "sport": sport_type,
-        "structure_summary": None,
-        "track": None,
-        "splits": None,
-        "telemetry": None,
-        "avg_power_w": None,
-        "avg_np_w": None,
-        "power_profile": None,
-        "workout_laps": None,
-        "laps": None,
-    }
-
-    if not bucket:
-        return result
-
-    base = _gcs_base_path(row.get("Day"), activity_id)
-    gpx_path = f"{base}/{activity_id}.gpx"
-    csv_path = f"{base}/{activity_id}.csv"
-    tcx_path = f"{base}/{activity_id}.tcx"
-
-    fit_path = f"{base}/{activity_id}.fit"
-
-    try:
-        if check_gcs_path_exists(gpx_path):
-            gpx_content = bucket.blob(gpx_path).download_as_bytes()
-            points = gpx_track_points(gpx_content)
-            result["track"] = [{"lat": lat, "lon": lon} for lat, lon in points]
-    except Exception:
-        pass
-
-    try:
-        if check_gcs_path_exists(csv_path):
-            df_csv = read_csv_from_gcs(csv_path)
-            if sport_type == "cycling":
-                avg_power, avg_np = power_from_csv(df_csv)
-                result["avg_power_w"] = int(round(avg_power)) if avg_power is not None else None
-                result["avg_np_w"] = int(round(avg_np)) if avg_np is not None else None
-            df_csv = df_csv[df_csv["Split"] != "Summary"]
-            result["splits"] = df_to_records(df_csv)
-            if result["laps"] is None and sport_type in VALID_SPORTS:
-                lap_rows, _detected = normalize_laps_from_csv(df_csv, sport_type)
-                if lap_rows:
-                    result["laps"] = lap_rows
-    except Exception:
-        pass
-
-    try:
-        if check_gcs_path_exists(tcx_path):
-            tcx_content = bucket.blob(tcx_path).download_as_bytes()
-            df_tcx = parse_tcx_to_dataframe(tcx_content)
-            result["telemetry"] = _telemetry_from_dataframe(df_tcx)
-            if sport_type == "cycling":
-                if check_gcs_path_exists(fit_path):
-                    fit_content = bucket.blob(fit_path).download_as_bytes()
-                    profile = power_profile_from_fit(fit_content)
-                elif "Watts" in df_tcx.columns:
-                    profile = power_profile_from_telemetry(df_tcx["Time"], df_tcx["Watts"])
-                else:
-                    profile = None
-                _apply_power_profile(result, profile)
-    except Exception:
-        pass
-
-    try:
-        if check_gcs_path_exists(fit_path):
-            fit_content = bucket.blob(fit_path).download_as_bytes()
-            if not result["track"]:
-                points = fit_track_points(fit_content)
-                if points:
-                    result["track"] = [{"lat": lat, "lon": lon} for lat, lon in points]
-            if not result["telemetry"]:
-                result["telemetry"] = _telemetry_from_dataframe(parse_fit_to_dataframe(fit_content))
-            if sport_type == "cycling":
-                if result["avg_np_w"] is None:
-                    power_1hz = parse_fit_power_series(fit_content)
-                    np_val = normalized_power_1hz(power_1hz)
-                    if np_val is not None:
-                        result["avg_np_w"] = int(round(np_val))
-                if not result["power_profile"]:
-                    _apply_power_profile(result, power_profile_from_fit(fit_content))
-    except Exception:
-        pass
-
-    try:
-        summary_df = query_bigquery_live(sql.get_workout_summary_detail_query(activity_id))
-        if not summary_df.empty:
-            summary_row = summary_df.iloc[0]
-            structure = summary_row.get("structure_summary")
-            if structure is not None and str(structure).strip() and str(structure).lower() != "nan":
-                result["structure_summary"] = str(structure).strip()
-            if summary_row.get("parse_status") == "ok":
-                laps = parse_laps_field(summary_row.get("laps"))
-                if laps:
-                    result["laps"] = df_to_records(pd.DataFrame(laps))
-                    display_df = laps_to_display_dataframe(laps, sport_type)
-                    result["workout_laps"] = df_to_records(display_df)
-                    if sport_type == "cycling":
-                        avg_power_w, avg_np_w = _cycling_power_from_laps(laps)
-                        if avg_power_w is not None:
-                            result["avg_power_w"] = avg_power_w
-                        if avg_np_w is not None:
-                            result["avg_np_w"] = avg_np_w
-    except Exception:
-        pass
-
-    return result
+    return _merge_activity_detail(
+        _load_activity_summary(activity_id, query),
+        _load_activity_assets(activity_id, query),
+    )
