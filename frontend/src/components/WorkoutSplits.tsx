@@ -182,7 +182,7 @@ export function BikeWorkoutSplitsTable({ laps }: BikeWorkoutSplitsTableProps) {
           </thead>
           <tbody>
             {usable.map((lap, i) => {
-              const kmLabel = lap.split ?? i + 1;
+              const kmLabel = String(lap.split ?? i + 1);
               const npW = cyclingLapPowerW(lap);
               const npTxt = npW != null ? String(Math.round(npW)) : '—';
               const elev = lap.elevation_gain_m;
