@@ -44,7 +44,7 @@ export function TrainingYtdHeatmap({ year, days, title = 'When you train' }: Tra
     return m;
   }, [days]);
 
-  const { gridStart, numWeeks, cells, monthTicks } = useMemo(() => {
+  const { numWeeks, cells, monthTicks } = useMemo(() => {
     const jan1 = new Date(year, 0, 1);
     const today = new Date();
     const end =
